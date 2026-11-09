@@ -194,22 +194,53 @@ class Database extends Config
     {
         parent::__construct();
 
-        $this->default['hostname'] = (string) env(
-            'database.default.hostname',
-            ENVIRONMENT === 'production' ? '' : '127.0.0.1'
+        $isRender = ! empty(getenv('RENDER')) || ! empty(getenv('PORT'));
+
+        $this->default['hostname'] = (string) (
+            env('database.default.hostname')
+            ?: env('DB_HOST')
+            ?: ($isRender ? 'gateway01.ap-northeast-1.prod.aws.tidbcloud.com' : '127.0.0.1')
         );
-        $this->default['username'] = (string) env(
-            'database.default.username',
-            ENVIRONMENT === 'production' ? '' : 'root'
+        $this->default['username'] = (string) (
+            env('database.default.username')
+            ?: env('DB_USER')
+            ?: ($isRender ? '3R5wCk7p8Mvk2Ug.root' : 'root')
         );
-        $this->default['password'] = (string) env('database.default.password', '');
-        $this->default['database'] = (string) env(
-            'database.default.database',
-            ENVIRONMENT === 'production' ? '' : 'voting_system'
+        
+        $dbPassword = (string) (
+            env('database.default.password')
+            ?: env('DB_PASSWORD')
+            ?: env('DB_PASS')
+            ?: env('TIDB_PASSWORD')
+            ?: ''
+        );
+        if ($dbPassword === '') {
+            foreach ($_ENV as $k => $v) {
+                if (stripos($k, 'password') !== false && ! empty($v)) {
+                    $dbPassword = (string) $v;
+                    break;
+                }
+            }
+        }
+        $this->default['password'] = $dbPassword;
+
+        $this->default['database'] = (string) (
+            env('database.default.database')
+            ?: env('DB_NAME')
+            ?: 'voting_system'
         );
         $this->default['DBDriver'] = (string) env('database.default.DBDriver', 'MySQLi');
         $this->default['DBPrefix'] = (string) env('database.default.DBPrefix', '');
-        $this->default['port'] = (int) env('database.default.port', 3306);
+
+        $port = (int) (env('database.default.port') ?: env('DB_PORT') ?: 0);
+        if ($port > 0) {
+            $this->default['port'] = $port;
+        } elseif (str_contains($this->default['hostname'] ?? '', 'tidbcloud.com')) {
+            $this->default['port'] = 4000;
+        } else {
+            $this->default['port'] = 3306;
+        }
+
         $this->default['DBDebug'] = ENVIRONMENT !== 'production';
 
         // Ensure that we always set the database group to 'tests' if
@@ -221,9 +252,6 @@ class Database extends Config
 
         // Automatically enable SSL when connecting to cloud MySQL (such as TiDB Cloud)
         if (str_contains($this->default['hostname'] ?? '', 'tidbcloud.com')) {
-            if ($this->default['port'] === 3306) {
-                $this->default['port'] = 4000;
-            }
             $caFile = file_exists('/etc/ssl/certs/ca-certificates.crt') ? '/etc/ssl/certs/ca-certificates.crt' : null;
             $this->default['encrypt'] = [
                 'ssl_verify' => false,

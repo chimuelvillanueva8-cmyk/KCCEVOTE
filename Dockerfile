@@ -32,6 +32,9 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 # Enable Apache rewrite module
 RUN a2enmod rewrite
 
+# Configure PHP error logging to stderr for Render logs
+RUN echo "log_errors = On\nerror_log = /dev/stderr" > /usr/local/etc/php/conf.d/logging.ini
+
 # Configure Apache DocumentRoot to CodeIgniter's /public folder
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \

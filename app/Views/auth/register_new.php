@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<?= esc(csrf_hash()) ?>">
     <title>Register - KEVS (KCC e-Voting System)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -154,13 +155,26 @@
             color: #ecf0f1;
         }
         .btn {
+            box-sizing: border-box;
+            min-height: 44px;
             border-radius: 8px;
             font-weight: 600;
             padding: 0.75rem 1.5rem;
+            line-height: 1.25;
+            text-align: center;
             transition: all 0.3s ease;
             border: none;
             cursor: pointer;
             user-select: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        .btn > i,
+        .btn > svg {
+            flex: 0 0 auto;
+            line-height: 1;
         }
         .btn-primary {
             background: #FCD34D;
@@ -195,6 +209,16 @@
         }
         .button-group button {
             flex: 1;
+            min-width: 0;
+        }
+        @media (max-width: 480px) {
+            .button-group {
+                flex-direction: column;
+                gap: 0.75rem;
+            }
+            .button-group .btn {
+                width: 100%;
+            }
         }
         .alert {
             border-radius: 8px;
@@ -613,6 +637,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                     },
                     body: JSON.stringify({ student_id: studentId })
                 });
@@ -1125,6 +1150,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
                     },
                     body: JSON.stringify({
                         face_descriptor: JSON.stringify(Array.from(faceDescriptor)),
@@ -1217,6 +1243,9 @@
 
                 const response = await fetch(BASE_URL + 'register/submit', {
                     method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
                     body: formData
                 });
 

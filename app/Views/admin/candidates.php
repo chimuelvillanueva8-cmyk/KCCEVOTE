@@ -29,6 +29,9 @@
                 </div>
             </header>
 
+            <?php if (! empty($hasOpenElection)): ?>
+                <div class="alert alert-warning" role="status">Existing candidates assigned to an active election are locked. Candidate records for other elections remain manageable.</div>
+            <?php endif; ?>
             <?php if (session()->getFlashdata('success')): ?>
                 <div class="alert alert-success"><?= session()->getFlashdata('success') ?></div>
             <?php endif; ?>
@@ -68,6 +71,7 @@
                                                     <th>Candidate</th>
                                                     <th>Party</th>
                                                     <th>Election</th>
+                                                    <th>Eligible Voters</th>
                                                     <th>Actions</th>
                                                 </tr>
                                             </thead>
@@ -79,13 +83,21 @@
                                                         <td><?= esc($candidate['party_name'] ?? 'Independent') ?></td>
                                                         <td><?= esc($candidate['election_title'] ?? 'Unassigned') ?></td>
                                                         <td>
-                                                            <div class="action-buttons">
-                                                                <a href="<?= base_url('admin/candidates/edit/' . $candidate['id']) ?>" class="btn btn-sm btn-warning" title="Edit candidate"><i class="bi bi-pencil-square"></i> Edit</a>
-                                                                <form action="<?= base_url('admin/candidates/delete/' . $candidate['id']) ?>" method="post" class="delete-form">
-                                                                    <?= csrf_field() ?>
-                                                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this candidate?')" title="Delete candidate"><i class="bi bi-trash3"></i> Delete</button>
-                                                                </form>
-                                                            </div>
+                                                            <?php $eligibleLevels = json_decode($candidate['eligible_year_levels'] ?? '', true); ?>
+                                                            <?= is_array($eligibleLevels) ? (empty($eligibleLevels) ? 'No year levels' : esc(implode(', ', $eligibleLevels))) : 'All voters' ?>
+                                                        </td>
+                                                        <td>
+                                                            <?php if (strtolower((string) ($candidate['election_status'] ?? '')) === 'open'): ?>
+                                                                <span class="text-muted">Locked during active election</span>
+                                                            <?php else: ?>
+                                                                <div class="action-buttons">
+                                                                    <a href="<?= base_url('admin/candidates/edit/' . $candidate['id']) ?>" class="btn btn-sm btn-warning" title="Edit candidate"><i class="bi bi-pencil-square"></i> Edit</a>
+                                                                    <form action="<?= base_url('admin/candidates/delete/' . $candidate['id']) ?>" method="post" class="delete-form">
+                                                                        <?= csrf_field() ?>
+                                                                        <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Delete this candidate?')" title="Delete candidate"><i class="bi bi-trash3"></i> Delete</button>
+                                                                    </form>
+                                                                </div>
+                                                            <?php endif; ?>
                                                         </td>
                                                     </tr>
                                                 <?php endforeach ?>
@@ -102,4 +114,3 @@
     </div>
 </body>
 </html>
-

@@ -4,13 +4,34 @@ function formatDateTime($datetime)
     return $datetime ? date('F j, Y \a\t g:i A', strtotime($datetime)) : '';
 }
 
+$renderCandidatePhoto = static function (array $candidate): string {
+    $name = trim((string) ($candidate['full_name'] ?? ''));
+    $nameParts = preg_split('/\s+/', $name);
+    $initials = strtoupper(
+        substr($nameParts[0] ?? '', 0, 1)
+        . substr($nameParts[count($nameParts) - 1] ?? '', 0, 1)
+    );
+    $photo = basename((string) ($candidate['photo'] ?? ''));
+    $photoPath = FCPATH . 'uploads/candidates/' . $photo;
+
+    if ($photo !== '' && is_file($photoPath)) {
+        return '<div class="candidate-photo"><img src="' . esc(base_url('uploads/candidates/' . rawurlencode($photo)))
+            . '" alt="' . esc($name) . '"></div>';
+    }
+
+    return '<div class="candidate-photo">' . esc($initials) . '</div>';
+};
+
 $elections = $elections ?? [];
 $selectedElectionId = $selectedElectionId ?? ($election['id'] ?? null);
 $results = $results ?? [];
+$positions = $positions ?? [];
 $election = $election ?? [];
 
 $db = \Config\Database::connect();
-$eligibleVoters = (int) $db->table('students')->countAllResults();
+$eligibleVoters = ! empty($election)
+    ? (new \App\Models\ElectionModel())->countEligibleVoters($election)
+    : 0;
 $totalVotesCast = 0;
 if (!empty($selectedElectionId)) {
     $voteCountRow = $db->table('votes')
@@ -25,40 +46,88 @@ $positionCount = !empty($selectedElectionId)
     ? (int) (new \App\Models\PositionModel())->countByElection((int) $selectedElectionId)
     : 0;
 $electionStatus = strtolower((string) ($election['status'] ?? ''));
-$isCompleted = in_array($electionStatus, ['closed', 'completed'], true)
-    || (!empty($election['end_time']) && strtotime($election['end_time']) <= time());
+$isCompleted = in_array($electionStatus, ['closed', 'completed'], true);
 $endDate = !empty($election['end_time']) ? date('F d, Y', strtotime($election['end_time'])) : 'Not scheduled';
+$tieWinners = $tieWinners ?? [];
+$tieWinnerIds = array_column($tieWinners, 'candidate_id', 'position_id');
 
-$displayRows = [];
-if (!empty($results)) {
-    foreach ($results as $result) {
-        $displayRows[] = [
-            'full_name' => $result['full_name'] ?? 'Candidate',
-            'vote_count' => (int) ($result['vote_count'] ?? 0),
-            'position' => $result['position'] ?? 'Position',
-        ];
+$officialResults = [];
+$resultsByPosition = [];
+foreach ($results as $result) {
+    $resultsByPosition[(int) $result['position_id']][] = $result;
+}
+if ($isCompleted) {
+    foreach ($positions as $position) {
+        $candidates = $resultsByPosition[(int) $position['id']] ?? [];
+        if (empty($candidates)) {
+            $officialResults[] = [
+                'position_id' => (int) $position['id'],
+                'position' => $position['title'],
+                'status' => 'no_winner',
+            ];
+            continue;
+        }
+        $highestVoteCount = max(array_map(static fn ($row) => (int) $row['vote_count'], $candidates));
+        if ($highestVoteCount === 0) {
+            $officialResults[] = [
+                'position_id' => (int) $position['id'],
+                'position' => $position['title'],
+                'status' => 'no_winner',
+            ];
+            continue;
+        }
+        $leaders = array_values(array_filter(
+            $candidates,
+            static fn ($row) => (int) $row['vote_count'] === $highestVoteCount
+        ));
+        if (count($leaders) > 1) {
+            $selectedWinner = null;
+            foreach ($leaders as $leader) {
+                if ((int) ($tieWinnerIds[$position['id']] ?? 0) === (int) $leader['candidate_id']) {
+                    $selectedWinner = $leader;
+                    break;
+                }
+            }
+            $officialResults[] = $selectedWinner
+                ? [
+                    'position_id' => (int) $position['id'],
+                    'position' => $position['title'],
+                    'status' => 'winner',
+                    'winner' => $selectedWinner,
+                    'vote_count' => $highestVoteCount,
+                    'tie_break' => true,
+                ]
+                : [
+                    'position_id' => (int) $position['id'],
+                    'position' => $position['title'],
+                    'status' => 'tie',
+                    'candidates' => $leaders,
+                    'vote_count' => $highestVoteCount,
+                ];
+        } else {
+            $officialResults[] = [
+                'position_id' => (int) $position['id'],
+                'position' => $position['title'],
+                'status' => 'winner',
+                'winner' => $leaders[0],
+                'vote_count' => $highestVoteCount,
+            ];
+        }
     }
 }
 
-if (empty($displayRows)) {
-    $displayRows = [
-        ['full_name' => 'Jane Dee', 'vote_count' => 1, 'position' => 'President'],
-        ['full_name' => 'Leah Rose', 'vote_count' => 0, 'position' => 'President'],
-    ];
+$summaryTitle = $election['title'] ?? 'Election';
+$summaryStatus = $election['status'] ?? 'Not selected';
+$summaryStart = !empty($election['start_time']) ? formatDateTime($election['start_time']) : 'Not scheduled';
+$summaryEnd = !empty($election['end_time']) ? formatDateTime($election['end_time']) : 'Not scheduled';
+$summaryDescription = $election['description'] ?? '—';
+$summaryDuration = '—';
+if (! empty($election['start_time']) && ! empty($election['end_time'])) {
+    $durationSeconds = strtotime($election['end_time']) - strtotime($election['start_time']);
+    if ($durationSeconds >= 0) {
+        $summaryDuration = rtrim(rtrim(number_format($durationSeconds / 3600, 1, '.', ''), '0'), '.') . ' hours';
+    }
 }
-
-$groupedDisplayRows = [];
-foreach ($displayRows as $row) {
-    $position = trim((string) ($row['position'] ?? 'Position')) ?: 'Position';
-    $groupedDisplayRows[$position][] = $row;
-}
-
-$summaryTitle = $election['title'] ?? 'CMAT COUNCIL';
-$summaryStatus = $election['status'] ?? 'Open';
-$summaryStart = !empty($election['start_time']) ? formatDateTime($election['start_time']) : 'June 19, 2026 at 8:00 AM';
-$summaryEnd = !empty($election['end_time']) ? formatDateTime($election['end_time']) : 'June 19, 2026 at 4:00 PM';
-$summaryDescription = $election['description'] ?? 'CMAT Council Election for AY 2026–2027';
-$summaryDuration = (!empty($election['start_time']) && !empty($election['end_time'])) ? '8 hours' : '—';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -265,8 +334,9 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
         }
         .status-pill.success {
             background: var(--green-soft);
-            color: var(--green);
+            color: #fff !important;
             border-color: rgba(63, 210, 138, 0.22);
+            box-shadow: 0 0 12px rgba(63, 210, 138, 0.2);
         }
         .status-pill.completed {
             background: rgba(34, 197, 94, 0.22);
@@ -280,9 +350,70 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
             text-shadow: 0 0 8px rgba(34, 197, 94, 0.8);
         }
         .status-pill.neutral {
-            background: rgba(255,255,255,0.04);
-            color: var(--muted);
-            border-color: rgba(255,255,255,0.08);
+            background: rgba(245, 197, 67, 0.2);
+            color: #fff !important;
+            border-color: rgba(245, 197, 67, 0.55);
+            box-shadow: 0 0 12px rgba(245, 197, 67, 0.16);
+        }
+        .candidate-position-status {
+            display: flex;
+            justify-content: flex-end;
+            margin: 0 0 0.55rem;
+        }
+        .tie-winner-form {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: end;
+            gap: 0.5rem;
+            width: 100%;
+            min-width: 0;
+            margin: 0 0 0.75rem;
+        }
+        .tie-winner-form label {
+            grid-column: 1 / -1;
+            min-width: 0;
+        }
+        .tie-winner-form select,
+        .tie-winner-form button {
+            padding: 0.45rem 0.65rem;
+            border-radius: 6px;
+        }
+        .tie-winner-form select {
+            display: block;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            border: 1px solid #28527A;
+            background: #0B2748;
+            color: #FFFFFF !important;
+            color-scheme: dark;
+        }
+        .tie-winner-form select option {
+            background: #0B2748;
+            color: #FFFFFF;
+        }
+        .tie-winner-form button {
+            min-width: 0;
+            white-space: nowrap;
+            border: 0;
+            color: #fff;
+            background: var(--blue);
+            cursor: pointer;
+        }
+        @media (max-width: 520px) {
+            .tie-winner-form {
+                grid-template-columns: minmax(0, 1fr);
+            }
+            .tie-winner-form label {
+                grid-column: 1;
+            }
+        }
+        .candidate-photo img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            border-radius: inherit;
+            object-fit: cover;
         }
 
         .results-panel-grid {
@@ -344,6 +475,11 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
             flex-direction: column;
             gap: 12px;
         }
+        .winner-candidate-block {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
         .candidate-row {
             display: grid;
             grid-template-columns: auto auto 1fr auto auto;
@@ -353,6 +489,27 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
             border: 1px solid var(--border);
             border-radius: 14px;
             padding: 12px;
+        }
+        .candidate-row[data-candidate-id] {
+            grid-template-columns: auto auto minmax(110px, 1fr) minmax(70px, 0.35fr) minmax(180px, 1fr) auto;
+        }
+        .position-winner-label {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            align-self: flex-end;
+            margin: 0 0 0 auto;
+            padding: 5px 10px;
+            border-radius: 999px;
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid rgba(134, 239, 172, 0.8);
+            color: #fff;
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            box-shadow: 0 0 12px rgba(34, 197, 94, 0.18);
+            width: fit-content;
         }
         .rank-badge {
             width: 30px;
@@ -388,21 +545,6 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
             margin-bottom: 6px;
             font-size: 0.96rem;
         }
-        .progress-line {
-            width: min(100%, 220px);
-            height: 8px;
-            background: rgba(255,255,255,0.08);
-            border-radius: 999px;
-            overflow: hidden;
-        }
-        .progress-fill {
-            height: 100%;
-            border-radius: 999px;
-            background: var(--blue);
-        }
-        .progress-fill.alt {
-            background: rgba(255,255,255,0.28);
-        }
         .vote-stats {
             display: flex;
             align-items: center;
@@ -417,9 +559,53 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
             font-size: 0.95rem;
         }
         .vote-percent {
-            color: var(--blue);
+            color: var(--yellow);
             font-size: 0.9rem;
             font-weight: 800;
+        }
+        .candidate-percentage {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 0;
+        }
+        .candidate-percentage-label {
+            color: var(--yellow);
+            font-size: 0.68rem;
+            font-weight: 800;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+            line-height: 1.2;
+        }
+        .candidate-percentage-details {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            line-height: 1.25;
+            white-space: nowrap;
+        }
+        .candidate-percentage .vote-percent {
+            color: var(--yellow);
+            font-size: 0.88rem;
+        }
+        .candidate-vote-fraction {
+            color: var(--muted);
+            font-size: 0.72rem;
+        }
+        .candidate-percentage .progress-line {
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.12);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .candidate-percentage .progress-fill {
+            height: 100%;
+            min-width: 0;
+            border-radius: inherit;
+            background: #00D4FF;
+            transition: width 0.3s ease;
         }
 
         .summary-list {
@@ -465,40 +651,73 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
         }
 
         .turnout-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow);
-            padding: 20px;
+            position: relative;
+            overflow: hidden;
+            background:
+                radial-gradient(circle at 12% 18%, rgba(74, 141, 255, 0.12), transparent 34%),
+                linear-gradient(145deg, rgba(12, 32, 64, 0.98), rgba(8, 24, 49, 0.98));
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 22px;
+            box-shadow: 0 22px 48px rgba(3, 10, 24, 0.3);
+            padding: 24px;
+        }
+        .turnout-header {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 1rem;
+            padding-bottom: 18px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+        }
+        .turnout-header h2 {
+            margin: 4px 0 0;
+            color: var(--text);
+            font-size: clamp(1.15rem, 2vw, 1.45rem);
+            font-weight: 750;
+            letter-spacing: -0.03em;
+        }
+        .turnout-header p {
+            margin: 5px 0 0;
+            color: var(--muted);
+            font-size: 0.84rem;
+        }
+        .turnout-period {
+            flex: 0 0 auto;
+            padding: 7px 11px;
+            border: 1px solid rgba(74, 141, 255, 0.22);
+            border-radius: 999px;
+            background: rgba(74, 141, 255, 0.1);
+            color: #bcd4ff;
+            font-size: 0.75rem;
+            font-weight: 700;
         }
         .turnout-body {
             display: grid;
-            grid-template-columns: 0.9fr 1.1fr;
-            gap: 18px;
+            grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+            gap: clamp(1.5rem, 4vw, 3.5rem);
             align-items: center;
+            padding-top: 20px;
         }
         .turnout-left {
             display: flex;
             flex-direction: column;
-            gap: 18px;
-        }
-        .section-kicker {
-            font-size: 0.76rem;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: var(--muted);
-            font-weight: 800;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
         }
         .turnout-chart-wrap {
-            display: flex;
-            align-items: center;
-            justify-content: center;
             position: relative;
-            min-height: 230px;
+            flex: 0 0 auto;
+            width: min(100%, 260px);
+            aspect-ratio: 1 / 1;
+            margin-inline: auto;
         }
         .turnout-chart-wrap canvas {
-            width: 220px !important;
-            height: 220px !important;
+            position: absolute;
+            inset: 0;
+            display: block;
+            width: 100% !important;
+            height: 100% !important;
         }
         .donut-center {
             position: absolute;
@@ -506,47 +725,81 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.9rem;
-            font-weight: 800;
-            letter-spacing: -0.03em;
+            flex-direction: column;
+            gap: 2px;
             color: var(--text);
+            font-size: clamp(1.65rem, 3vw, 2.1rem);
+            font-weight: 850;
+            letter-spacing: -0.03em;
             pointer-events: none;
+        }
+        .donut-center span {
+            color: var(--muted);
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
         }
         .turnout-legend {
             display: grid;
             gap: 10px;
+            width: 100%;
         }
         .legend-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 12px;
+            min-width: 0;
+            padding: 14px 16px;
+            border: 1px solid rgba(148, 163, 184, 0.14);
+            border-radius: 13px;
+            background: rgba(255, 255, 255, 0.035);
             color: var(--muted);
-            font-size: 0.92rem;
+            font-size: 0.88rem;
+            transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+        }
+        .legend-row:hover {
+            transform: translateY(-1px);
+            border-color: rgba(74, 141, 255, 0.3);
+            background: rgba(74, 141, 255, 0.06);
         }
         .legend-name {
             display: inline-flex;
             align-items: center;
             gap: 8px;
+            min-width: 0;
         }
         .legend-dot {
-            width: 10px;
-            height: 10px;
+            flex: 0 0 auto;
+            width: 9px;
+            height: 9px;
             border-radius: 50%;
             display: inline-block;
+        }
+        .legend-row strong {
+            flex: 0 0 auto;
+            color: var(--text);
+            font-size: 0.92rem;
+            font-variant-numeric: tabular-nums;
         }
         .legend-dot.blue { background: var(--blue); }
         .legend-dot.gray { background: rgba(255,255,255,0.16); }
         .legend-dot.green { background: var(--green); }
-        .turnout-right {
-            min-height: 220px;
-            display: flex;
-            flex-direction: column;
+        .turnout-summary {
+            display: grid;
             gap: 12px;
         }
-        .turnout-right canvas {
-            width: 100% !important;
-            height: 220px !important;
+        .turnout-summary-title {
+            margin: 0 0 2px;
+            color: var(--text);
+            font-size: 0.96rem;
+            font-weight: 750;
+        }
+        .turnout-summary-copy {
+            margin: 0 0 4px;
+            color: var(--muted);
+            font-size: 0.82rem;
         }
 
         .verification-card {
@@ -600,27 +853,139 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
             font-weight: 700;
             cursor: pointer;
         }
+        .final-result-btn {
+            border: 0;
+            border-radius: 12px;
+            padding: 11px 16px;
+            color: #061b3a;
+            background: var(--yellow);
+            font-weight: 800;
+            cursor: pointer;
+        }
+        .final-result-btn:hover { filter: brightness(1.08); }
+        .final-result-btn:disabled {
+            background: rgba(255,255,255,0.12);
+            color: var(--muted);
+            cursor: not-allowed;
+            filter: none;
+            opacity: 0.7;
+        }
+        .final-results-modal[hidden] { display: none; }
+        .final-results-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            background: rgba(2, 8, 23, 0.78);
+        }
+        .final-results-dialog {
+            width: min(100%, 720px);
+            max-height: min(85vh, 900px);
+            overflow: auto;
+            padding: 1.5rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: #0b1f3e;
+            box-shadow: var(--shadow);
+        }
+        .final-results-dialog-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1.25rem;
+        }
+        .final-position-result {
+            margin-top: 1rem;
+            padding: 1rem;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: rgba(255,255,255,0.03);
+        }
+        .final-position-label {
+            display: inline-flex;
+            margin-bottom: 0.65rem;
+            padding: 0.45rem 0.75rem;
+            border-radius: 999px;
+            background: var(--blue-soft);
+            color: var(--blue);
+            font-size: 0.75rem;
+            font-weight: 800;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        .final-result-close {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 0.55rem 0.8rem;
+            color: var(--text);
+            background: rgba(255,255,255,0.06);
+            cursor: pointer;
+        }
+        .final-results-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 1.25rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+        }
+        .final-results-print {
+            border: 0;
+            border-radius: 10px;
+            padding: 0.7rem 1rem;
+            color: #fff;
+            background: var(--blue);
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .print-results-document {
+            display: none;
+        }
 
         @media (max-width: 1100px) {
             .summary-grid { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
             .results-panel-grid { grid-template-columns: 1fr; }
-            .turnout-body { grid-template-columns: 1fr; }
+            .turnout-body { grid-template-columns: minmax(190px, 240px) minmax(0, 1fr); }
         }
         @media (max-width: 768px) {
             .admin-container { padding: 18px 16px 32px; }
             .summary-grid { grid-template-columns: 1fr; }
             .results-header { align-items: flex-start; }
             .results-header-actions { width: 100%; }
-            .results-select, .print-btn { width: 100%; }
+            .results-select, .print-btn, .final-result-btn { width: 100%; }
             .candidate-row { grid-template-columns: auto auto 1fr; }
             .vote-stats { grid-column: 2 / 4; justify-content: flex-start; }
+            .candidate-row[data-candidate-id] {
+                grid-template-columns: auto auto minmax(0, 1fr);
+            }
+            .candidate-row[data-candidate-id] .vote-stats {
+                grid-column: 2 / 4;
+                justify-content: flex-start;
+            }
+            .candidate-row[data-candidate-id] .candidate-percentage {
+                grid-column: 2 / 4;
+                grid-template-columns: 64px minmax(0, 1fr);
+                width: 100%;
+            }
+            .candidate-row[data-candidate-id] > .status-pill {
+                grid-column: 2 / 4;
+                justify-self: start;
+            }
             .summary-item { grid-template-columns: 1fr; gap: 8px; }
             .verification-card { flex-direction: column; align-items: flex-start; }
             .audit-btn { width: 100%; }
+            .turnout-card { padding: 18px; }
+            .turnout-body { grid-template-columns: 1fr; gap: 20px; }
+            .turnout-chart-wrap { width: min(100%, 230px); }
+            .turnout-header { align-items: flex-start; }
         }
 
         @media print {
-            @page { margin: 16mm; }
+            @page { size: A4 portrait; margin: 10mm; }
 
             html,
             body,
@@ -732,34 +1097,426 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
                 color: #111;
             }
 
-            .progress-line {
-                background: #e5e5e5;
+            .vote-stats {
+                gap: 4px;
             }
 
-            .progress-fill {
-                background: #2563eb;
+            .status-pill.success {
+                color: #14532d !important;
+                background: #dcfce7 !important;
+                border-color: #15803d !important;
+                box-shadow: none !important;
                 print-color-adjust: exact;
                 -webkit-print-color-adjust: exact;
             }
 
-            .progress-fill.alt {
-                background: #999;
+            .status-pill.neutral {
+                color: #713f12 !important;
+                background: #fef3c7 !important;
+                border-color: #a16207 !important;
+                box-shadow: none !important;
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
             }
 
-            .vote-stats {
-                gap: 4px;
+            body.printing-final-results * {
+                visibility: hidden !important;
+            }
+
+            body.printing-final-results #final-results-modal,
+            body.printing-final-results #final-results-modal * {
+                visibility: visible !important;
+            }
+
+            body.printing-final-results #final-results-modal {
+                position: absolute !important;
+                inset: 0 !important;
+                display: flex !important;
+                align-items: flex-start !important;
+                justify-content: flex-start !important;
+                padding: 0 !important;
+                background: #fff !important;
+            }
+
+            body.printing-final-results .final-results-dialog {
+                width: 100% !important;
+                max-height: none !important;
+                overflow: visible !important;
+                padding: 0 !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                background: #fff !important;
+                box-shadow: none !important;
+            }
+
+            body.printing-final-results .final-results-dialog h2,
+            body.printing-final-results .final-results-dialog p,
+            body.printing-final-results .final-position-result,
+            body.printing-final-results .final-position-result strong,
+            body.printing-final-results .final-position-result li,
+            body.printing-final-results .final-position-label,
+            body.printing-final-results .candidate-name,
+            body.printing-final-results .vote-stats {
+                color: #111 !important;
+            }
+
+            body.printing-final-results .final-position-result {
+                break-inside: avoid;
+                border-color: #bbb;
+                background: #fff;
+            }
+
+            body.printing-final-results .final-position-label {
+                background: #eee !important;
+                border: 1px solid #777;
+            }
+
+            body.printing-final-results .final-results-dialog-header {
+                border-bottom: 2px solid #111;
+                padding-bottom: 0.75rem;
+            }
+
+            body.printing-final-results .final-result-close,
+            body.printing-final-results .final-results-actions {
+                display: none !important;
+            }
+
+            body.results-page {
+                display: block !important;
+                width: auto !important;
+                min-height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #fff !important;
+                color: #172b45 !important;
+                font-family: Arial, Helvetica, sans-serif !important;
+            }
+
+            body.results-page > :not(.print-results-document) {
+                display: none !important;
+            }
+
+            body.results-page .print-results-document {
+                display: block !important;
+                width: 100%;
+                color: #172b45 !important;
+                background: #fff !important;
+                font-family: Arial, Helvetica, sans-serif !important;
+                font-size: 9pt;
+            }
+
+            body.printing-winners-only .print-all-results {
+                display: none !important;
+            }
+
+            body:not(.printing-winners-only) .print-winners-only {
+                display: none !important;
+            }
+
+            .print-results-header {
+                margin: 0 0 7mm;
+                text-align: center;
+                color: #102b4e !important;
+            }
+
+            .print-results-header img {
+                display: block;
+                width: 54px;
+                height: 54px;
+                margin: 0 auto 3mm;
+                object-fit: contain;
+            }
+
+            .print-results-header h1 {
+                margin: 0;
+                color: #102b4e !important;
+                font-size: 17pt;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+            }
+
+            .print-results-header p {
+                margin: 2mm 0 0;
+                color: #344b67 !important;
+                font-size: 9pt;
+                font-weight: 700;
+                letter-spacing: 0.08em;
+            }
+
+            .print-results-table {
+                width: 100%;
+                border-collapse: collapse;
+                table-layout: fixed;
+                color: #172b45 !important;
+                font-family: Arial, Helvetica, sans-serif !important;
+                font-size: 9pt;
+            }
+
+            .print-results-table th,
+            .print-results-table td {
+                padding: 2.2mm 2.5mm;
+                border: 1px solid #304966 !important;
+                color: #172b45 !important;
+                text-align: left;
+                vertical-align: middle;
+                overflow-wrap: anywhere;
+            }
+
+            .print-results-table thead th {
+                background: #102b4e !important;
+                color: #fff !important;
+                font-size: 8pt;
+                font-weight: 700;
+                letter-spacing: 0.05em;
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+            }
+
+            .print-results-table thead th:nth-child(1) { width: 27%; }
+            .print-results-table thead th:nth-child(2) { width: 39%; }
+            .print-results-table thead th:nth-child(3) { width: 14%; text-align: center; }
+            .print-results-table thead th:nth-child(4) { width: 20%; text-align: center; }
+
+            .print-results-table .print-position-cell {
+                background: #e7f0fa !important;
+                color: #102b4e !important;
+                font-weight: 700;
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+            }
+
+            .print-results-table .print-vote-count {
+                text-align: center;
+                font-variant-numeric: tabular-nums;
+            }
+
+            .print-results-table td:last-child {
+                text-align: center;
+            }
+
+            .print-winner-label,
+            .print-tie-label,
+            .print-no-winner-label {
+                display: inline-block;
+                padding: 1mm 2mm;
+                border: 1px solid #b99128;
+                border-radius: 2mm;
+                background: #fff3c4 !important;
+                color: #614900 !important;
+                font-size: 7.5pt;
+                font-weight: 700;
+                letter-spacing: 0.03em;
+                white-space: nowrap;
+                print-color-adjust: exact;
+                -webkit-print-color-adjust: exact;
+            }
+
+            .print-tie-label,
+            .print-no-winner-label {
+                border-color: #8a98a8;
+                background: #f1f4f7 !important;
+                color: #344b67 !important;
+            }
+
+            .print-leading-label {
+                border-color: #304966;
+                background: #e7f0fa !important;
+                color: #102b4e !important;
+            }
+
+            .print-empty-results {
+                text-align: center !important;
+                font-style: italic;
+            }
+
+            .print-total-votes {
+                margin: 5mm 0 0;
+                padding-top: 3mm;
+                border-top: 2px solid #102b4e;
+                color: #102b4e !important;
+                font-size: 10pt;
+                font-weight: 700;
+                text-align: right;
+            }
+
+            .print-results-table thead,
+            .print-results-table tr,
+            .print-total-votes {
+                break-inside: avoid;
+                page-break-inside: avoid;
             }
         }
     </style>
 </head>
 <body class="dashboard-page results-page">
+        <section class="print-results-document print-all-results" aria-label="Election results for printing">
+            <header class="print-results-header">
+                <img src="<?= base_url('images/kcclogo.png') ?>" alt="Kabankalan Catholic College logo">
+                <h1><?= $isCompleted ? 'FINAL ELECTION RESULTS' : 'ELECTION RESULTS' ?></h1>
+                <p><?= $isCompleted ? 'OFFICIAL CANDIDATE VOTE COUNT' : 'PROVISIONAL CANDIDATE VOTE COUNT' ?></p>
+            </header>
+            <?php if (session()->getFlashdata('success')): ?>
+                <div class="alert alert-success" role="status"><?= esc(session()->getFlashdata('success')) ?></div>
+            <?php endif; ?>
+            <?php if (session()->getFlashdata('error')): ?>
+                <div class="alert alert-danger" role="alert"><?= esc(session()->getFlashdata('error')) ?></div>
+            <?php endif; ?>
+
+            <table class="print-results-table">
+                <thead>
+                    <tr>
+                        <th scope="col">POSITION</th>
+                        <th scope="col">CANDIDATE</th>
+                        <th scope="col">VOTES</th>
+                        <th scope="col">RESULT</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($positions as $position): ?>
+                        <?php
+                            $positionId = (int) $position['id'];
+                            $positionCandidates = $resultsByPosition[$positionId] ?? [];
+                            $positionResult = null;
+                            foreach ($officialResults as $officialResult) {
+                                if ((int) $officialResult['position_id'] === $positionId) {
+                                    $positionResult = $officialResult;
+                                    break;
+                                }
+                            }
+                            $provisionalHighestVotes = 0;
+                            $provisionalLeaderCount = 0;
+                            if (! $isCompleted && ! empty($positionCandidates)) {
+                                $provisionalHighestVotes = max(array_map(
+                                    static fn ($row) => (int) $row['vote_count'],
+                                    $positionCandidates
+                                ));
+                                if ($provisionalHighestVotes > 0) {
+                                    $provisionalLeaderCount = count(array_filter(
+                                        $positionCandidates,
+                                        static fn ($row) => (int) $row['vote_count'] === $provisionalHighestVotes
+                                    ));
+                                }
+                            }
+                            $candidateRows = $positionCandidates ?: [null];
+                        ?>
+                        <?php foreach ($candidateRows as $candidateIndex => $candidate): ?>
+                            <?php
+                                $candidateResult = '';
+                                if ($candidate !== null && $isCompleted && $positionResult !== null) {
+                                    if ($positionResult['status'] === 'winner'
+                                        && (int) ($positionResult['winner']['candidate_id'] ?? $positionResult['winner']['id'] ?? 0)
+                                            === (int) ($candidate['candidate_id'] ?? $candidate['id'] ?? 0)) {
+                                        $candidateResult = 'WINNER';
+                                    } elseif ($positionResult['status'] === 'tie') {
+                                        foreach ($positionResult['candidates'] as $tiedCandidate) {
+                                            if ((int) ($tiedCandidate['candidate_id'] ?? $tiedCandidate['id'] ?? 0)
+                                                === (int) ($candidate['candidate_id'] ?? $candidate['id'] ?? 0)) {
+                                                $candidateResult = 'TIE';
+                                                break;
+                                            }
+                                        }
+                                    } elseif ($positionResult['status'] === 'no_winner') {
+                                        $candidateResult = 'NO WINNER';
+                                    }
+                                } elseif ($candidate !== null && ! $isCompleted && $provisionalHighestVotes > 0
+                                    && (int) $candidate['vote_count'] === $provisionalHighestVotes) {
+                                    $candidateResult = $provisionalLeaderCount > 1 ? 'TIE' : 'LEADING';
+                                } elseif ($isCompleted && ($positionResult === null || $positionResult['status'] === 'no_winner')) {
+                                    $candidateResult = 'NO WINNER';
+                                }
+                            ?>
+                            <tr>
+                                <?php if ($candidateIndex === 0): ?>
+                                    <th class="print-position-cell" scope="rowgroup" rowspan="<?= count($candidateRows) ?>">
+                                        <?= esc($position['title']) ?>
+                                    </th>
+                                <?php endif; ?>
+                                <td><?= $candidate !== null ? esc($candidate['full_name']) : 'No candidates configured' ?></td>
+                                <td class="print-vote-count"><?= $candidate !== null ? number_format((int) $candidate['vote_count']) : '—' ?></td>
+                                <td>
+                                    <?php if ($candidateResult === 'WINNER'): ?>
+                                        <span class="print-winner-label">WINNER</span>
+                                    <?php elseif ($candidateResult === 'LEADING'): ?>
+                                        <span class="print-leading-label">LEADING</span>
+                                    <?php elseif ($candidateResult !== ''): ?>
+                                        <span class="<?= $candidateResult === 'TIE' ? 'print-tie-label' : 'print-no-winner-label' ?>"><?= esc($candidateResult) ?></span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endforeach; ?>
+                    <?php if (empty($positions)): ?>
+                        <tr>
+                            <td colspan="4" class="print-empty-results">No positions are configured for this election.</td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+
+            <p class="print-total-votes">TOTAL VOTES CAST: <?= number_format($totalVotesCast) ?></p>
+        </section>
+        <?php if ($isCompleted): ?>
+            <section class="print-results-document print-winners-only" aria-label="Final election winners for printing">
+                <header class="print-results-header">
+                    <img src="<?= base_url('images/kcclogo.png') ?>" alt="Kabankalan Catholic College logo">
+                    <h1>FINAL ELECTION RESULTS</h1>
+                    <p>OFFICIAL CANDIDATE VOTE COUNT</p>
+                </header>
+
+                <table class="print-results-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">POSITION</th>
+                            <th scope="col">CANDIDATE</th>
+                            <th scope="col">VOTES</th>
+                            <th scope="col">RESULT</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php $hasPrintableWinners = false; ?>
+                        <?php foreach ($officialResults as $result): ?>
+                            <?php if ($result['status'] === 'winner'): ?>
+                                <?php $hasPrintableWinners = true; ?>
+                                <tr>
+                                    <th class="print-position-cell" scope="row"><?= esc($result['position']) ?></th>
+                                    <td><?= esc($result['winner']['full_name']) ?></td>
+                                    <td class="print-vote-count"><?= number_format((int) ($result['winner']['vote_count'] ?? $result['vote_count'] ?? 0)) ?></td>
+                                    <td><span class="print-winner-label">WINNER</span></td>
+                                </tr>
+                            <?php elseif ($result['status'] === 'tie'): ?>
+                                <?php $hasPrintableWinners = true; ?>
+                                <?php foreach ($result['candidates'] as $tieIndex => $candidate): ?>
+                                    <tr>
+                                        <?php if ($tieIndex === 0): ?>
+                                            <th class="print-position-cell" scope="rowgroup" rowspan="<?= count($result['candidates']) ?>">
+                                                <?= esc($result['position']) ?>
+                                            </th>
+                                        <?php endif; ?>
+                                        <td><?= esc($candidate['full_name']) ?></td>
+                                        <td class="print-vote-count"><?= number_format((int) ($candidate['vote_count'] ?? $result['vote_count'] ?? 0)) ?></td>
+                                        <td><span class="print-tie-label">TIE</span></td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        <?php endforeach; ?>
+                        <?php if (! $hasPrintableWinners): ?>
+                            <tr>
+                                <td colspan="4" class="print-empty-results">No winners were declared for this election.</td>
+                            </tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+
+                <p class="print-total-votes">TOTAL VOTES CAST: <?= number_format($totalVotesCast) ?></p>
+            </section>
+        <?php endif; ?>
     <?= view('admin/_sidebar') ?>
     <div class="admin-container">
         <main class="results-dashboard">
             <header class="results-header">
                 <div>
-                    <h1>Election Results</h1>
-                    <p>Review vote totals for the latest election.</p>
+                    <h1><?= $isCompleted ? 'OFFICIAL ELECTION RESULTS' : 'Election Results' ?></h1>
+                    <p><?= $isCompleted ? 'Winners and ties from the final election counts.' : 'Official winners are published after the election is closed.' ?></p>
                 </div>
                 <div class="results-header-actions">
                     <select class="results-select" id="electionSelect" onchange="selectElection()">
@@ -769,7 +1526,15 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
                             </option>
                         <?php endforeach; ?>
                     </select>
-                    <button class="print-btn" type="button" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
+                    <button class="print-btn" type="button" onclick="window.print()"><i class="bi bi-printer"></i> Print All Results</button>
+                    <button
+                        class="final-result-btn"
+                        type="button"
+                        id="show-final-results"
+                        <?= $isCompleted ? '' : 'disabled' ?>
+                        title="<?= $isCompleted ? 'Print official final election results' : 'Final results are available after the election is closed' ?>"
+                        aria-label="<?= $isCompleted ? 'Print final election results' : 'Final results are disabled until the election is closed' ?>"
+                    ><i class="bi bi-printer"></i> Print Final Result</button>
                 </div>
             </header>
 
@@ -779,7 +1544,7 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
                         <span>Eligible Voters</span>
                         <span class="metric-icon"><i class="bi bi-people"></i></span>
                     </div>
-                    <div class="metric-value"><?= number_format($eligibleVoters) ?></div>
+                    <div class="metric-value" id="eligible-voter-count"><?= number_format($eligibleVoters) ?></div>
                     <div class="metric-sub"><span>Voter base</span><span></span></div>
                 </article>
 
@@ -788,8 +1553,8 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
                         <span>Total Votes Cast</span>
                         <span class="metric-icon"><i class="bi bi-check-circle"></i></span>
                     </div>
-                    <div class="metric-value"><?= number_format($totalVotesCast) ?></div>
-                    <div class="metric-sub"><span><?= number_format($turnoutRate, 2) ?>% Turnout</span><span class="status-pill <?= $isCompleted ? 'success completed' : 'neutral' ?>"><i class="bi bi-check-circle-fill"></i> <?= $isCompleted ? 'Completed' : 'Active' ?></span></div>
+                    <div class="metric-value" id="total-votes-cast"><?= number_format($totalVotesCast) ?></div>
+                    <div class="metric-sub"><span id="turnout-rate-metric"><?= number_format($turnoutRate, 2) ?>% Turnout</span><span></span></div>
                 </article>
 
                 <article class="metric-card yellow">
@@ -798,7 +1563,7 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
                         <span class="metric-icon"><i class="bi bi-person-check"></i></span>
                     </div>
                     <div class="metric-value"><?= $positionCount ?></div>
-                    <div class="metric-sub"><span>Contest groups</span><span class="status-pill <?= $isCompleted ? 'success completed' : 'neutral' ?>"><?= $isCompleted ? 'Completed' : 'Live' ?></span></div>
+                    <div class="metric-sub"><span>Contest groups</span><span></span></div>
                 </article>
 
                 <article class="metric-card purple">
@@ -807,7 +1572,7 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
                         <span class="metric-icon"><i class="bi bi-calendar2-week"></i></span>
                     </div>
                     <div class="metric-value" style="font-size: clamp(1.15rem, 1.4vw, 1.7rem); line-height: 1.35;"><?= esc($endDate) ?></div>
-                    <div class="metric-sub"><span class="status-pill <?= $isCompleted ? 'success completed' : 'neutral' ?>"><i class="bi bi-circle-fill"></i> <?= $isCompleted ? 'Completed' : 'Active' ?></span><span></span></div>
+                    <div class="metric-sub"><span></span><span></span></div>
                 </article>
             </section>
 
@@ -815,45 +1580,118 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
                 <article class="panel">
                     <div class="panel-inner">
                         <div class="panel-header">
-                            <h3>Vote Results</h3>
+                            <h3><?= $isCompleted ? 'Final Results Ready' : ($electionStatus === 'open' ? 'Ongoing Results' : 'Election Results') ?></h3>
                         </div>
-                        <?php foreach ($groupedDisplayRows as $position => $candidates): ?>
-                            <?php $maxPositionVotes = max(array_map(static fn($row) => (int) ($row['vote_count'] ?? 0), $candidates)); ?>
-                            <div class="panel-position-title"><?= esc($position) ?></div>
-
-                            <div class="candidate-list">
-                                <?php foreach ($candidates as $candidateIndex => $candidate): ?>
+                        <?php if ($electionStatus === 'open' || $isCompleted || $electionStatus === 'pending'): ?>
+                            <p role="status" style="margin-bottom:1rem;"><?= $isCompleted ? 'Final rankings — all candidates and their final vote counts are listed below.' : ($electionStatus === 'open' ? 'Live provisional rankings — votes and positions may change while voting is open.' : 'Provisional rankings are shown for administrator review.') ?></p>
+                            <?php if (empty($results)): ?>
+                                <p>No candidates or votes have been recorded for this election yet.</p>
+                            <?php endif; ?>
+                            <?php foreach ($positions as $position): ?>
                                     <?php
-                                        $voteCount = (int) ($candidate['vote_count'] ?? 0);
-                                        $percent = $maxPositionVotes > 0 ? round(($voteCount / $maxPositionVotes) * 100) : 0;
-                                        $rank = $candidateIndex + 1;
-                                        $badgeClass = $rank === 1 ? '' : 'secondary';
-                                        $barClass = $rank === 1 ? '' : 'alt';
-                                        $candidateName = trim((string) ($candidate['full_name'] ?? 'Candidate')) ?: 'Candidate';
-                                        $nameParts = preg_split('/\s+/', $candidateName);
-                                        $initials = strtoupper(substr($nameParts[0] ?? 'N', 0, 1) . substr($nameParts[count($nameParts) - 1] ?? '', 0, 1));
+                                        $positionCandidates = $resultsByPosition[(int) $position['id']] ?? [];
                                     ?>
-                                    <div class="candidate-row">
-                                        <div class="rank-badge <?= $badgeClass ?>"><?= $rank ?></div>
-                                        <div class="candidate-photo"><?= esc($initials) ?></div>
-                                        <div>
-                                            <div class="candidate-name"><?= esc($candidateName) ?></div>
-                                            <div class="progress-line"><div class="progress-fill <?= $barClass ?>" style="width: <?= $percent ?>%;"></div></div>
+                                    <div class="panel-position-title"><?= esc($position['title']) ?></div>
+                                    <?php if (empty($positionCandidates)): ?>
+                                        <p>No candidates are configured for this position.</p>
+                                    <?php else: ?>
+                                        <?php
+                                        $highestVotes = (int) $positionCandidates[0]['vote_count'];
+                                        $leaderCount = count(array_filter(
+                                            $positionCandidates,
+                                            static fn ($candidate) => (int) $candidate['vote_count'] === $highestVotes
+                                        ));
+                                        ?>
+                                    <?php if ($highestVotes > 0 && (!$isCompleted || $leaderCount > 1)): ?>
+                                        <div class="candidate-position-status">
+                                            <span class="status-pill <?= $leaderCount > 1 ? 'neutral' : 'success' ?>"><?= $leaderCount > 1 ? ($isCompleted && ! empty($tieWinnerIds[$position['id']]) ? 'WINNER SELECTED' : 'TIE') : ($isCompleted ? 'WINNER' : 'LEADING') ?></span>
                                         </div>
-                                        <div class="vote-stats">
-                                            <span class="vote-number"><?= $voteCount ?></span>
-                                            <span>Vote<?= $voteCount === 1 ? '' : 's' ?></span>
-                                        </div>
-                                        <div class="vote-percent"><?= $percent ?>%</div>
+                                    <?php endif; ?>
+                                    <?php if ($isCompleted && $leaderCount > 1 && $highestVotes > 0): ?>
+                                        <form method="post" action="<?= base_url('admin/results/tie-winner') ?>" class="tie-winner-form">
+                                            <?= csrf_field() ?>
+                                            <input type="hidden" name="election_id" value="<?= (int) $selectedElectionId ?>">
+                                            <input type="hidden" name="position_id" value="<?= (int) $position['id'] ?>">
+                                            <label for="tie-winner-<?= (int) $position['id'] ?>">Select tie-break winner</label>
+                                            <select id="tie-winner-<?= (int) $position['id'] ?>" name="candidate_id" required>
+                                                <option value="">Choose a tied candidate</option>
+                                                <?php foreach ($positionCandidates as $candidate): ?>
+                                                    <?php if ((int) $candidate['vote_count'] === $highestVotes): ?>
+                                                        <option value="<?= (int) $candidate['candidate_id'] ?>" <?= (int) ($tieWinnerIds[$position['id']] ?? 0) === (int) $candidate['candidate_id'] ? 'selected' : '' ?>>
+                                                            <?= esc($candidate['full_name']) ?>
+                                                        </option>
+                                                    <?php endif; ?>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <button type="submit">Save Winner</button>
+                                        </form>
+                                    <?php endif; ?>
+                                    <div class="candidate-list">
+                                        <?php $rank = 0; $previousVotes = null; ?>
+                                        <?php foreach ($positionCandidates as $candidate): ?>
+                                            <?php
+                                                $voteCount = (int) $candidate['vote_count'];
+                                                if ($previousVotes === null || $voteCount !== $previousVotes) {
+                                                    $rank++;
+                                                }
+                                                $previousVotes = $voteCount;
+                                                $isLeader = $rank === 1;
+                                                $name = trim((string) $candidate['full_name']);
+                                                $candidatePercent = $eligibleVoters > 0
+                                                    ? ($voteCount / $eligibleVoters) * 100
+                                                    : 0;
+                                                $candidateProgress = min(100, max(0, $candidatePercent));
+                                                $isWinningCandidate = $isCompleted && $highestVotes > 0 && (
+                                                    ($leaderCount === 1 && $isLeader)
+                                                    || (int) ($tieWinnerIds[$position['id']] ?? 0) === (int) $candidate['candidate_id']
+                                                );
+                                            ?>
+                                            <?php if ($isWinningCandidate): ?>
+                                                <div class="winner-candidate-block">
+                                                    <div class="position-winner-label">Winner</div>
+                                                    <div class="candidate-row" data-candidate-id="<?= (int) $candidate['candidate_id'] ?>" data-winner="1">
+                                                <?php else: ?>
+                                                    <div class="candidate-row" data-candidate-id="<?= (int) $candidate['candidate_id'] ?>" data-winner="0">
+                                            <?php endif; ?>
+                                                <div class="rank-badge <?= $isLeader ? '' : 'secondary' ?>"><?= $rank ?></div>
+                                                <?= $renderCandidatePhoto($candidate) ?>
+                                                <div class="candidate-name"><?= esc($name) ?></div>
+                                                <div class="vote-stats">
+                                                    <span class="vote-number candidate-vote-count"><?= $voteCount ?></span>
+                                                    <span>Vote<?= $voteCount === 1 ? '' : 's' ?></span>
+                                                </div>
+                                                <div class="candidate-percentage">
+                                                    <span class="candidate-percentage-label">Vote Share</span>
+                                                    <div class="candidate-percentage-details">
+                                                        <span class="vote-percent candidate-vote-percent"><?= number_format($candidatePercent, 2) ?>%</span>
+                                                        <span class="candidate-vote-fraction">(<?= number_format($voteCount) ?> / <span class="candidate-eligible-count"><?= number_format($eligibleVoters) ?></span>)</span>
+                                                    </div>
+                                                    <div class="progress-line" role="progressbar" aria-label="Candidate share of eligible voters" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?= number_format($candidateProgress, 2, '.', '') ?>">
+                                                        <div class="progress-fill candidate-vote-progress" style="width: <?= number_format($candidateProgress, 2, '.', '') ?>%;"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <?php if ($isWinningCandidate): ?>
+                                                </div>
+                                            <?php endif; ?>
+                                        <?php endforeach; ?>
                                     </div>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                            <?php endforeach; ?>
+                        <?php elseif (! $isCompleted): ?>
+                            <p role="status">Election results will appear here after voting opens.</p>
+                        <?php endif; ?>
 
                         <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:0.9rem;">
                             <span>Total Votes Cast</span>
-                            <strong style="color: var(--text); font-size: 1.1rem;">
+                            <strong id="total-votes-cast-summary" style="color: var(--text); font-size: 1.1rem;">
                                 <?= number_format($totalVotesCast) ?>
+                            </strong>
+                        </div>
+                        <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center; gap:12px; color:var(--muted); font-size:0.9rem;">
+                            <span>Voter Turnout</span>
+                            <strong style="color: var(--text); font-size: 1.1rem; text-align:right;">
+                                <span id="panel-turnout-rate"><?= number_format($turnoutRate, 2) ?></span>% <span style="font-size:0.85rem; font-weight:400;">(<span id="panel-turnout-count"><?= number_format($totalVotesCast) ?></span> of <span id="panel-eligible-voters"><?= number_format($eligibleVoters) ?></span> eligible voters)</span>
                             </strong>
                         </div>
                     </div>
@@ -895,47 +1733,106 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
                 </article>
             </section>
 
+            <?php if ($isCompleted): ?>
+                <div class="final-results-modal" id="final-results-modal" role="dialog" aria-modal="true" aria-labelledby="final-results-title" hidden>
+                    <section class="final-results-dialog">
+                        <header class="final-results-dialog-header">
+                            <div>
+                                <h2 id="final-results-title">OFFICIAL ELECTION RESULTS</h2>
+                                <p><?= esc($summaryTitle) ?> — final winners by position</p>
+                            </div>
+                            <button class="final-result-close" type="button" data-close-final-results aria-label="Close final results">Close</button>
+                        </header>
+                        <?php if (empty($officialResults)): ?>
+                            <p>No positions are configured for this election.</p>
+                        <?php else: ?>
+                            <?php foreach ($officialResults as $result): ?>
+                                <article class="final-position-result">
+                                    <span class="final-position-label"><?= esc($result['position']) ?></span>
+                                    <?php if ($result['status'] === 'winner'): ?>
+                                        <div class="candidate-row">
+                                            <div class="rank-badge">1</div>
+                                            <?= $renderCandidatePhoto($result['winner']) ?>
+                                            <div class="candidate-name"><?= esc($result['winner']['full_name']) ?></div>
+                                            <div class="vote-stats">
+                                                <span class="vote-number"><?= esc($result['vote_count']) ?></span>
+                                                <span>Vote<?= $result['vote_count'] === 1 ? '' : 's' ?></span>
+                                            </div>
+                                            <span class="status-pill success">WINNER</span>
+                                        </div>
+                                    <?php elseif ($result['status'] === 'tie'): ?>
+                                        <p><strong>TIE — No single winner (<?= esc($result['vote_count']) ?> votes each)</strong></p>
+                                        <ul>
+                                            <?php foreach ($result['candidates'] as $tiedCandidate): ?>
+                                                <li><?= $renderCandidatePhoto($tiedCandidate) ?> <?= esc($tiedCandidate['full_name']) ?></li>
+                                            <?php endforeach; ?>
+                                        </ul>
+                                    <?php else: ?>
+                                        <p><strong>No valid winner for this position.</strong></p>
+                                    <?php endif; ?>
+                                </article>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                        <footer class="final-results-actions">
+                            <button class="final-results-print" type="button" data-print-final-results><i class="bi bi-printer"></i> Print Final Results</button>
+                        </footer>
+                    </section>
+                </div>
+            <?php endif; ?>
+
             <section class="turnout-card">
+                <header class="turnout-header">
+                    <div>
+                        <div class="section-kicker">Election participation</div>
+                        <h2>Voter turnout</h2>
+                        <p>Participation across all eligible voters for this election.</p>
+                    </div>
+                    <span class="turnout-period"><i class="bi bi-bar-chart-line"></i> Live overview</span>
+                </header>
                 <div class="turnout-body">
                     <div class="turnout-left">
-                        <div class="section-kicker">Voter Turnout</div>
                         <div class="turnout-chart-wrap">
                             <canvas id="turnoutChart"></canvas>
-                            <div class="donut-center"><?= number_format($turnoutRate, 2) ?>%</div>
+                            <div class="donut-center">
+                                <span id="turnout-rate-center"><?= number_format($turnoutRate, 2) ?>%</span>
+                                <span>Turnout</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="turnout-summary">
+                        <div>
+                            <h3 class="turnout-summary-title">Participation breakdown</h3>
+                            <p class="turnout-summary-copy">Voters compared with the eligible student population.</p>
                         </div>
                         <div class="turnout-legend">
                             <div class="legend-row">
                                 <span class="legend-name"><span class="legend-dot blue"></span> Votes Cast</span>
-                                <strong style="color: var(--text);"><?= number_format($totalVotesCast) ?> (<?= number_format($turnoutRate, 2) ?>%)</strong>
+                                <strong><span id="votes-cast-count"><?= number_format($totalVotesCast) ?></span> <span style="color: var(--muted); font-weight: 600;">(<span id="votes-cast-percent"><?= number_format($turnoutRate, 2) ?></span>%)</span></strong>
                             </div>
                             <div class="legend-row">
                                 <span class="legend-name"><span class="legend-dot gray"></span> Did Not Vote</span>
-                                <strong style="color: var(--text);"><?= number_format(max(0, $eligibleVoters - $totalVotesCast)) ?> (<?= number_format(max(0, 100 - $turnoutRate), 2) ?>%)</strong>
+                                <strong><span id="nonvoter-count"><?= number_format(max(0, $eligibleVoters - $totalVotesCast)) ?></span> <span style="color: var(--muted); font-weight: 600;">(<span id="nonvoter-percent"><?= number_format(max(0, 100 - $turnoutRate), 2) ?></span>%)</span></strong>
                             </div>
                             <div class="legend-row">
                                 <span class="legend-name"><span class="legend-dot green"></span> Eligible Voters</span>
-                                <strong style="color: var(--text);"><?= number_format($eligibleVoters) ?></strong>
+                                <strong id="eligible-voters-summary" style="color: var(--text);"><?= number_format($eligibleVoters) ?></strong>
                             </div>
                         </div>
-                    </div>
-
-                    <div class="turnout-right">
-                        <div class="section-kicker">Voter Turnout Over Time</div>
-                        <canvas id="turnoutTrendChart"></canvas>
                     </div>
                 </div>
             </section>
 
+            <?php if ($isCompleted): ?>
             <div class="verification-card">
                 <div class="verification-main">
                     <div class="verification-icon"><i class="bi bi-shield-check"></i></div>
                     <div class="verification-copy">
-                        <p class="verification-title">Results are final and have been verified.</p>
-                        <p class="verification-sub">Data shown is secure and tamper-proof.</p>
+                        <p class="verification-title">Final results for this closed election.</p>
+                        <p class="verification-sub">Winners are based on final vote counts and any saved tie-break selections.</p>
                     </div>
                 </div>
-                <button class="audit-btn" type="button">Audit Trail</button>
             </div>
+            <?php endif; ?>
         </main>
     </div>
 
@@ -947,9 +1844,44 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
             }
         }
 
+        const finalResultsModal = document.getElementById('final-results-modal');
+        const finalResultsButton = document.getElementById('show-final-results');
+        if (finalResultsModal && finalResultsButton) {
+            const closeFinalResults = () => {
+                finalResultsModal.hidden = true;
+                finalResultsButton.focus();
+            };
+            const printWinnersOnly = () => {
+                document.body.classList.add('printing-winners-only');
+                window.addEventListener('afterprint', () => {
+                    document.body.classList.remove('printing-winners-only');
+                }, { once: true });
+                window.print();
+            };
+            finalResultsButton.addEventListener('click', printWinnersOnly);
+            const printFinalResultsButton = finalResultsModal.querySelector('[data-print-final-results]');
+            printFinalResultsButton.addEventListener('click', () => {
+                document.body.classList.add('printing-final-results');
+                window.addEventListener('afterprint', () => {
+                    document.body.classList.remove('printing-final-results');
+                }, { once: true });
+                window.print();
+            });
+            finalResultsModal.querySelectorAll('[data-close-final-results]').forEach(button => {
+                button.addEventListener('click', closeFinalResults);
+            });
+            finalResultsModal.addEventListener('click', event => {
+                if (event.target === finalResultsModal) closeFinalResults();
+            });
+            document.addEventListener('keydown', event => {
+                if (event.key === 'Escape' && !finalResultsModal.hidden) closeFinalResults();
+            });
+        }
+
         const turnoutChart = document.getElementById('turnoutChart');
+        let turnoutChartInstance = null;
         if (turnoutChart) {
-            new Chart(turnoutChart, {
+            turnoutChartInstance = new Chart(turnoutChart, {
                 type: 'doughnut',
                 data: {
                     labels: ['Votes Cast', 'Did Not Vote'],
@@ -962,7 +1894,8 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
                 },
                 options: {
                     responsive: true,
-                    maintainAspectRatio: false,
+                    maintainAspectRatio: true,
+                    aspectRatio: 1,
                     plugins: {
                         legend: { display: false },
                         tooltip: {
@@ -976,48 +1909,74 @@ $summaryDuration = (!empty($election['start_time']) && !empty($election['end_tim
             });
         }
 
-        const turnoutTrendChart = document.getElementById('turnoutTrendChart');
-        if (turnoutTrendChart) {
-            new Chart(turnoutTrendChart, {
-                type: 'line',
-                data: {
-                    labels: ['May 14', 'May 16', 'May 18', 'May 20'],
-                    datasets: [{
-                        data: [58, 72, 83, <?= (float) $turnoutRate ?>],
-                        borderColor: '#4A8DFF',
-                        backgroundColor: 'rgba(74, 141, 255, 0.16)',
-                        borderWidth: 3,
-                        fill: true,
-                        tension: 0.38,
-                        pointRadius: 4,
-                        pointBackgroundColor: '#4A8DFF',
-                        pointBorderColor: '#EAF3FF',
-                        pointBorderWidth: 2
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: {
-                            ticks: { color: '#A9BDD9' },
-                            grid: { display: false }
-                        },
-                        y: {
-                            beginAtZero: false,
-                            min: 40,
-                            max: 100,
-                            ticks: {
-                                color: '#A9BDD9',
-                                callback: (value) => value + '%'
-                            },
-                            grid: { color: 'rgba(255,255,255,0.06)' }
-                        }
+        const resultsElectionId = <?= json_encode((int) ($selectedElectionId ?? 0)) ?>;
+        if (resultsElectionId) {
+            const statsUrl = <?= json_encode(base_url('api/stats')) ?> + '?election_id=' + resultsElectionId;
+            const setText = (id, value) => {
+                const element = document.getElementById(id);
+                if (element) element.textContent = value;
+            };
+            const refreshTurnout = async () => {
+                try {
+                    const response = await fetch(statsUrl, {
+                        headers: { Accept: 'application/json' },
+                        cache: 'no-store'
+                    });
+                    if (!response.ok) throw new Error(`Turnout refresh failed: ${response.status}`);
+                    const stats = await response.json();
+                    const voters = Number(stats.voters) || 0;
+                    const eligible = Number(stats.eligible_voters) || 0;
+                    const turnout = Number(stats.turnout_rate) || 0;
+                    const nonvoters = Math.max(0, eligible - voters);
+                    const nonvoterRate = Math.max(0, 100 - turnout);
+                    const formatCount = value => new Intl.NumberFormat().format(value);
+                    const formatRate = value => value.toFixed(2);
+
+                    (Array.isArray(stats.candidate_results) ? stats.candidate_results : []).forEach(candidate => {
+                        const candidateId = Number(candidate.candidate_id);
+                        const candidateVotes = Number(candidate.vote_count) || 0;
+                        const candidateRow = document.querySelector(`.candidate-row[data-candidate-id="${candidateId}"]`);
+                        if (!candidateRow) return;
+
+                        const voteCount = candidateRow.querySelector('.candidate-vote-count');
+                        const voteLabel = candidateRow.querySelector('.vote-stats > span:nth-child(2)');
+                        const percentage = candidateRow.querySelector('.candidate-vote-percent');
+                        const fraction = candidateRow.querySelector('.candidate-vote-fraction');
+                        const eligibleCount = candidateRow.querySelector('.candidate-eligible-count');
+                        const progressBar = candidateRow.querySelector('.candidate-percentage [role="progressbar"]');
+                        const progressFill = candidateRow.querySelector('.candidate-vote-progress');
+                        const candidateRate = eligible > 0 ? candidateVotes / eligible * 100 : 0;
+                        const progressRate = Math.min(100, Math.max(0, candidateRate));
+                        if (voteCount) voteCount.textContent = formatCount(candidateVotes);
+                        if (voteLabel) voteLabel.textContent = `Vote${candidateVotes === 1 ? '' : 's'}`;
+                        if (percentage) percentage.textContent = `${candidateRate.toFixed(2)}%`;
+                        if (fraction) fraction.firstChild.textContent = `(${formatCount(candidateVotes)} / `;
+                        if (eligibleCount) eligibleCount.textContent = formatCount(eligible);
+                        if (progressBar) progressBar.setAttribute('aria-valuenow', progressRate.toFixed(2));
+                        if (progressFill) progressFill.style.width = `${progressRate}%`;
+                    });
+
+                    setText('eligible-voter-count', formatCount(eligible));
+                    setText('eligible-voters-summary', formatCount(eligible));
+                    setText('total-votes-cast', formatCount(voters));
+                    setText('total-votes-cast-summary', formatCount(voters));
+                    setText('turnout-rate-metric', `${formatRate(turnout)}% Turnout`);
+                    setText('turnout-rate-center', `${formatRate(turnout)}%`);
+                    setText('votes-cast-count', formatCount(voters));
+                    setText('votes-cast-percent', formatRate(turnout));
+                    setText('nonvoter-count', formatCount(nonvoters));
+                    setText('nonvoter-percent', formatRate(nonvoterRate));
+                    if (turnoutChartInstance) {
+                        turnoutChartInstance.data.datasets[0].data = [voters, nonvoters];
+                        turnoutChartInstance.update();
                     }
+                } catch (error) {
+                    console.error(error);
                 }
-            });
+            };
+            window.setInterval(refreshTurnout, 30000);
         }
+
     </script>
 </body>
 </html>

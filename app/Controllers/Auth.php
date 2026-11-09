@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Libraries\FaceIdentity;
+use App\Models\AuditLogModel;
 use App\Models\UserModel;
 
 class Auth extends BaseController
@@ -21,7 +22,8 @@ class Auth extends BaseController
             'action' => $action,
             'verify' => $verify,
             'error'  => $session->getFlashdata('error'),
-            'success'=> $session->getFlashdata('success')
+            'success'=> $session->getFlashdata('success'),
+            'campus_location_required' => $this->isCampusLocationConfigured(),
         ]);
     }
 
@@ -39,13 +41,17 @@ class Auth extends BaseController
         if ($action === 'admin') {
             $admin = $userModel->verifyAdmin($username, $password);
             if ($admin) {
+                $loginAt = date('Y-m-d H:i:s');
+                $session->regenerate(true);
                 $session->set([
                     'admin_id'   => $admin['id'],
                     'admin_name' => $admin['full_name'] ?? $admin['username'],
                     'username'   => $admin['username'],
+                    'is_builtin_admin' => (int) ($admin['is_builtin_admin'] ?? 0) === 1,
                     'role'       => 'admin',
                     'isLoggedIn' => true
                 ]);
+                (new AuditLogModel())->record('ADMIN LOGIN', 'Administrator logged in at ' . $loginAt . '.', $loginAt);
                 return redirect()->to('/admin');
             }
         } else {
@@ -60,15 +66,12 @@ class Auth extends BaseController
             $studentModel = new \App\Models\StudentModel();
             // Use raw student identifier (allow alphanumeric IDs)
             $identifier = trim((string) ($username ?? ''));
-            log_message('info', '[Auth::attemptLogin] student login attempt for identifier: ' . $identifier);
             if ($identifier === '') {
                 $session->setFlashdata('error', 'Student ID not found.');
                 return redirect()->back()->withInput();
             }
             $student = $userModel->getStudent($identifier);
-            log_message('info', '[Auth::attemptLogin] getStudent result: ' . json_encode(array_filter([ 'id' => $student['id'] ?? null, 'student_id' => $student['student_id'] ?? null, 'username' => $student['username'] ?? null, 'status' => $student['status'] ?? null, 'is_active' => $student['is_active'] ?? null ])));
             if (!$student) {
-                log_message('warning', '[Auth::attemptLogin] student not found for identifier: ' . $identifier);
                 $session->setFlashdata('error', 'Student ID not found.');
                 return redirect()->back()->withInput();
             }
@@ -79,13 +82,15 @@ class Auth extends BaseController
                     $session->setFlashdata('error', 'This student account is temporarily locked after repeated failed attempts. Please contact the admin.');
                     return redirect()->back()->withInput();
                 }
-                if ((($student['status'] ?? 'Inactive') !== 'Active') || empty($student['is_active'])) {
+                $isActive = (string) ($student['is_active'] ?? '') === '1';
+                $hasActiveStatus = ($student['status'] ?? '') === 'Active';
+                if (!$isActive && !$hasActiveStatus) {
                     $session->setFlashdata('error', 'Your student account is currently inactive. Please contact the administrator.');
                     return redirect()->back()->withInput();
                 }
 
                 if (!$studentModel->verifyPassword($password, $student['password'])) {
-                    log_message('warning', '[Auth::attemptLogin] password verification failed for student id: ' . ($student['student_id'] ?? 'N/A') . ' - provided password length: ' . strlen((string)$password));
+                    log_message('warning', 'Student login password verification failed.');
                     $attempts = (int) ($student['failed_login_attempts'] ?? 0) + 1;
                     $lockUntil = $attempts >= 5 ? date('Y-m-d H:i:s', time() + 900) : null;
                     $studentModel->update($student['id'], [
@@ -95,16 +100,32 @@ class Auth extends BaseController
                     $session->setFlashdata('error', $attempts >= 5 ? 'Too many failed attempts. Please contact the admin to unlock your account.' : 'Incorrect password. Please try again.');
                     return redirect()->back()->withInput();
                 }
-                log_message('info', '[Auth::attemptLogin] password verified for student id: ' . ($student['student_id'] ?? 'N/A'));
-
-                    $hasFaceRegistration = !empty($student['face_descriptor']) || !empty($student['face_registered']);
-                $studentModel->update($student['id'], [
+                $loginAt = date('Y-m-d H:i:s');
+                $hasFaceRegistration = !empty($student['face_descriptor']) || !empty($student['face_registered']);
+                $loginUpdate = [
                     'failed_login_attempts' => 0,
                     'locked_until' => null,
-                    'last_login_at' => date('Y-m-d H:i:s'),
+                    'last_login_at' => $loginAt,
                     'face_registered' => $hasFaceRegistration ? 1 : 0,
-                ]);
+                ];
+                $storedPassword = (string) $student['password'];
+                if (! password_verify($password, $storedPassword) || password_needs_rehash($storedPassword, PASSWORD_DEFAULT)) {
+                    $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+                    if ($passwordHash === false) {
+                        log_message('error', 'Unable to generate an upgraded student password hash.');
+                        $session->setFlashdata('error', 'Unable to complete login. Please contact the administrator.');
+                        return redirect()->back();
+                    }
+                    $loginUpdate['password'] = $passwordHash;
+                }
 
+                if (! $studentModel->update($student['id'], $loginUpdate)) {
+                    log_message('error', 'Unable to update student login security state.');
+                    $session->setFlashdata('error', 'Unable to complete login. Please contact the administrator.');
+                    return redirect()->back();
+                }
+
+                $session->regenerate(true);
                 $session->set([
                     'user_id'         => $student['id'],
                     'student_id'      => $student['student_id'],
@@ -115,8 +136,7 @@ class Auth extends BaseController
                     'login_latitude'  => $latValue,
                     'login_longitude' => $lngValue
                 ]);
-                log_message('info', '[Auth::attemptLogin] student session set, session data: ' . json_encode(array_filter([ 'user_id' => $session->get('user_id'), 'student_id' => $session->get('student_id'), 'role' => $session->get('role'), 'isLoggedIn' => $session->get('isLoggedIn') ])));
-                log_message('info', '[Auth::attemptLogin] redirecting to /voting for student id: ' . ($student['student_id'] ?? 'N/A'));
+                (new AuditLogModel())->record('STUDENT LOGIN', 'Student logged in at ' . $loginAt . '.', $loginAt);
                 return redirect()->to('/voting');
             }
         }
@@ -130,26 +150,47 @@ class Auth extends BaseController
         $session = session();
         $requestData = $this->request->getJSON(true) ?? [];
         if ($session->get('temp_user_id')) {
+                $incomingFaceDescriptor = $requestData['face_descriptor'] ?? $this->request->getPost('face_descriptor');
+                $normalizedFacePayload = $incomingFaceDescriptor ? $this->normalizeFacePayload($incomingFaceDescriptor) : null;
+                $registeredFacePayload = (string) $session->get('temp_face_descriptor');
+                $incomingDescriptor = $normalizedFacePayload
+                    ? (FaceIdentity::normalizePayload($normalizedFacePayload)['descriptor'] ?? [])
+                    : [];
+                if (
+                    ! FaceIdentity::isValidDescriptor($incomingDescriptor)
+                    || ! $this->facesMatch($normalizedFacePayload, $registeredFacePayload, 0.65)
+                ) {
+                    return $this->response->setJSON(['success' => false, 'message' => 'Face verification failed. Please try again.']);
+                }
+
                 $latitude = $this->request->getPost('latitude') ?? ($requestData['latitude'] ?? null);
                 $longitude = $this->request->getPost('longitude') ?? ($requestData['longitude'] ?? null);
                 
                 $latValue = is_numeric($latitude) ? floatval($latitude) : null;
                 $lngValue = is_numeric($longitude) ? floatval($longitude) : null;
                 
-                if ($latValue !== null && $lngValue !== null && ! $this->isWithinCampusRange($latValue, $lngValue)) {
+                if (! $this->isWithinCampusRange($latValue, $lngValue)) {
                     $session->setFlashdata('error', 'Access denied: your location is outside the permitted campus access radius.');
                     $session->remove(['temp_user_id', 'temp_user_type', 'temp_user_name', 'temp_student_id', 'temp_face_descriptor']);
                     return $this->response->setJSON(['success' => false, 'message' => 'Location verification failed.']);
                 }
                 
+                $loginAt = date('Y-m-d H:i:s');
                 $studentModel = new \App\Models\StudentModel();
-                $studentModel->update($session->get('temp_user_id'), [
+                if (! $studentModel->update($session->get('temp_user_id'), [
                     'failed_login_attempts' => 0,
                     'locked_until' => null,
-                    'last_login_at' => date('Y-m-d H:i:s'),
+                    'last_login_at' => $loginAt,
                     'face_registered' => 1
-                ]);
+                ])) {
+                    log_message('error', 'Unable to update student face-login security state.');
+                    return $this->response->setStatusCode(500)->setJSON([
+                        'success' => false,
+                        'message' => 'Unable to complete face login. Please use your password or contact the administrator.',
+                    ]);
+                }
                 
+                $session->regenerate(true);
                 $session->set([
                     'user_id'         => $session->get('temp_user_id'),
                     'student_id'      => $session->get('temp_student_id'),
@@ -160,6 +201,7 @@ class Auth extends BaseController
                     'login_longitude' => $lngValue
             ]);
             $session->remove(['temp_user_id', 'temp_user_type', 'temp_user_name', 'temp_student_id', 'temp_face_descriptor']);
+            (new AuditLogModel())->record('STUDENT LOGIN', 'Student logged in using face verification at ' . $loginAt . '.', $loginAt);
             return $this->response->setJSON(['success' => true]);
         }
         
@@ -270,13 +312,17 @@ class Auth extends BaseController
             return redirect()->back()->withInput();
         }
 
-        if ((($student['status'] ?? 'Inactive') !== 'Active') || empty($student['is_active'])) {
+        $isActive = (string) ($student['is_active'] ?? '') === '1';
+        $hasActiveStatus = ($student['status'] ?? '') === 'Active';
+        if (!$isActive && !$hasActiveStatus) {
             $session->setFlashdata('error', 'Your student account is currently inactive. Please contact the administrator.');
             return redirect()->back()->withInput();
         }
 
-        if (empty($student['face_descriptor'])) {
-            $session->setFlashdata('error', 'Face verification is not available for this account.');
+        $registeredPayload = FaceIdentity::normalizePayload($student['face_descriptor'] ?? null);
+        $registeredDescriptor = $registeredPayload['descriptor'] ?? [];
+        if (! FaceIdentity::isValidDescriptor($registeredDescriptor)) {
+            $session->setFlashdata('error', 'Face verification needs to be re-enrolled by an administrator. Please use your password to log in.');
             return redirect()->back()->withInput();
         }
 
@@ -285,7 +331,7 @@ class Auth extends BaseController
             'temp_user_type'       => 'student',
             'temp_user_name'       => $student['full_name'],
             'temp_student_id'      => $student['student_id'],
-            'temp_face_descriptor' => $student['face_descriptor']
+            'temp_face_descriptor' => json_encode(['descriptor' => array_values($registeredDescriptor)])
         ]);
 
         return redirect()->to('/login?action=student&verify=face');
@@ -293,8 +339,48 @@ class Auth extends BaseController
 
     public function logout()
     {
-        session()->destroy();
+        $session = session();
+        $role = $session->get('role');
+        if ($role === 'admin' || $role === 'student') {
+            $logoutAt = date('Y-m-d H:i:s');
+            (new AuditLogModel())->record(strtoupper($role) . ' LOGOUT', ucfirst($role) . ' logged out at ' . $logoutAt . '.', $logoutAt);
+        }
+        $session->destroy();
         return redirect()->to('/login');
+    }
+
+    public function faceReference()
+    {
+        if (session()->get('role') !== 'admin') {
+            return $this->response->setStatusCode(403)->setBody('Face reference access is restricted.');
+        }
+
+        $descriptor = (string) session()->get('temp_face_descriptor');
+        $decoded = json_decode($descriptor, true);
+        $legacyPaths = is_array($decoded)
+            ? array_values(array_filter($decoded, 'is_string'))
+            : [];
+        $imageIndex = filter_var($this->request->getGet('index') ?? 0, FILTER_VALIDATE_INT);
+        $legacyPath = $imageIndex !== false && $imageIndex >= 0
+            ? ($legacyPaths[$imageIndex] ?? null)
+            : null;
+        $facesDirectory = realpath(WRITEPATH . 'uploads/faces');
+        $imagePath = $legacyPath ? realpath($legacyPath) : false;
+
+        if (!$facesDirectory || !$imagePath || strpos($imagePath, $facesDirectory . DIRECTORY_SEPARATOR) !== 0 || !is_file($imagePath)) {
+            return $this->response->setStatusCode(404)->setBody('Face reference not found.');
+        }
+
+        $mimeType = mime_content_type($imagePath) ?: 'image/png';
+        return $this->response->setHeader('Content-Type', $mimeType)->setBody((string) file_get_contents($imagePath));
+    }
+
+    public function saveFaceReference()
+    {
+        return $this->response->setStatusCode(403)->setJSON([
+            'success' => false,
+            'message' => 'Face descriptors can only be updated through administrator student management.',
+        ]);
     }
 
     // API endpoint to check if Student ID is already registered
@@ -541,7 +627,7 @@ class Auth extends BaseController
         return false;
     }
 
-    private function facesMatch(string $incomingPayload, string $registeredPayload): bool
+    private function facesMatch(string $incomingPayload, string $registeredPayload, float $threshold = 0.35): bool
     {
         $incoming = json_decode($incomingPayload, true);
         $registered = json_decode($registeredPayload, true);
@@ -564,12 +650,6 @@ class Auth extends BaseController
             return false;
         }
 
-        $distance = 0.0;
-        foreach ($incomingDescriptor as $index => $value) {
-            $difference = (float) $value - (float) ($registeredDescriptor[$index] ?? 0);
-            $distance += $difference * $difference;
-        }
-
-        return sqrt($distance) < 0.35;
+        return FaceIdentity::descriptorsMatch($incomingDescriptor, $registeredDescriptor, $threshold);
     }
 }

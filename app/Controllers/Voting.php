@@ -3,7 +3,10 @@
 namespace App\Controllers;
 
 use App\Models\ElectionModel;
+use App\Models\AuditLogModel;
 use App\Models\VoteModel;
+use App\Libraries\VotingRules;
+use App\Libraries\CampusLocation;
 
 class Voting extends BaseController
 {
@@ -20,22 +23,33 @@ class Voting extends BaseController
         }
     }
 
-    protected function checkLocationAndLogoutIfNeeded()
+    protected function checkLocationAndLogoutIfNeeded(bool $requireSubmittedLocation = false)
     {
         $session = session();
         $currentLatitude = $this->request->getPost('latitude') ?? $this->request->getGet('latitude');
         $currentLongitude = $this->request->getPost('longitude') ?? $this->request->getGet('longitude');
-        
+
+        $requestHasLocation = $this->request->getPost('latitude') !== null
+            || $this->request->getPost('longitude') !== null
+            || $this->request->getGet('latitude') !== null
+            || $this->request->getGet('longitude') !== null;
+        if (! $requireSubmittedLocation && ! $requestHasLocation) {
+            $currentLatitude = $session->get('login_latitude');
+            $currentLongitude = $session->get('login_longitude');
+        }
+
         $latValue = is_numeric($currentLatitude) ? floatval($currentLatitude) : null;
         $lngValue = is_numeric($currentLongitude) ? floatval($currentLongitude) : null;
 
-        // If location is provided, check if still within range
-        if ($latValue !== null && $lngValue !== null) {
-            if (! $this->isWithinCampusRange($latValue, $lngValue)) {
-                // Student moved outside campus range - clear auth keys only (keep flashdata session)
-                $session->remove(['user_id', 'student_id', 'full_name', 'username', 'role', 'isLoggedIn', 'login_latitude', 'login_longitude', 'temp_user_id', 'temp_user_type', 'temp_user_name', 'temp_student_id', 'temp_face_descriptor']);
-                return redirect()->to('/login?action=student')->with('error', 'Your location is outside the permitted campus access radius. You have been logged out for security.');
-            }
+        if (! $this->isWithinCampusRange($latValue, $lngValue)) {
+            $logoutAt = date('Y-m-d H:i:s');
+            (new AuditLogModel())->record(
+                'STUDENT LOGOUT',
+                'Student was logged out because campus location verification failed at ' . $logoutAt . '.',
+                $logoutAt
+            );
+            $session->remove(['user_id', 'student_id', 'full_name', 'username', 'role', 'isLoggedIn', 'login_latitude', 'login_longitude', 'temp_user_id', 'temp_user_type', 'temp_user_name', 'temp_student_id', 'temp_face_descriptor']);
+            return redirect()->to('/login?action=student')->with('error', 'A valid campus location is required to access the student portal.');
         }
 
         return null;
@@ -56,8 +70,11 @@ class Voting extends BaseController
 
         // Get student's department
         $student = $studentModel->find($studentId);
-        $isInactive = $student && (($student['status'] ?? 'Inactive') !== 'Active' || empty($student['is_active']));
+        $isInactive = $student && (empty($student['is_active']) && ($student['status'] ?? '') !== 'Active');
         if (!$student || $isInactive) {
+            $logoutAt = date('Y-m-d H:i:s');
+            $reason = $student ? 'Inactive student session ended' : 'Student session ended because the account no longer exists';
+            (new AuditLogModel())->record('STUDENT LOGOUT', $reason . ' at ' . $logoutAt . '.', $logoutAt);
             $session->remove(['user_id', 'student_id', 'full_name', 'username', 'role', 'isLoggedIn', 'login_latitude', 'login_longitude']);
             return redirect()->to('/login?action=student')->with('error', 'Your account is inactive and cannot vote. Please contact the administrator.');
         }
@@ -90,6 +107,7 @@ class Voting extends BaseController
             'campus_latitude' => $campusSettings['campus_latitude'],
             'campus_longitude' => $campusSettings['campus_longitude'],
             'campus_radius' => $campusSettings['campus_access_radius'],
+            'campus_location_required' => CampusLocation::isConfigured($campusSettings),
             'needs_face_registration' => $needsFaceRegistration,
             'show_completion_receipt' => false
         ]);
@@ -116,7 +134,7 @@ class Voting extends BaseController
 
         // Get student's department
         $student = $studentModel->find($studentId);
-        $isInactive = $student && (($student['status'] ?? 'Inactive') !== 'Active' || empty($student['is_active']));
+        $isInactive = $student && (empty($student['is_active']) && ($student['status'] ?? '') !== 'Active');
         if (!$student || $isInactive) {
             $session->remove(['user_id', 'student_id', 'full_name', 'username', 'role', 'isLoggedIn', 'login_latitude', 'login_longitude']);
             return redirect()->to('/login?action=student')->with('error', 'Your account is inactive and cannot vote. Please contact the administrator.');
@@ -131,9 +149,13 @@ class Voting extends BaseController
             return redirect()->to('/voting')->with('error', 'You do not have access to this election.');
         }
 
-        $hasVoted = $voteModel->hasCompletedVote($studentId, $electionId);
+        $hasVoted = $voteModel->hasVoted($studentId, $electionId);
         $showCompletionReceipt = $this->request->getGet('completed') === '1';
-        $candidates = $electionModel->getCandidatesWithDetails($electionId);
+        $candidates = $this->eligibleCandidates(
+            $electionModel->getCandidatesWithDetails($electionId, false),
+            $student['year_level'] ?? null
+        );
+        $positions = (new \App\Models\PositionModel())->getByElection((int) $electionId);
         $receipt = $hasVoted ? $voteModel->getReceipt($studentId, $electionId) : [];
         $results = $voteModel->getResults($electionId);
 
@@ -154,6 +176,7 @@ class Voting extends BaseController
             'elections' => $accessibleElections,
             'selectedElection' => $election,
             'candidates' => $candidates,
+            'positions' => $positions,
             'hasVoted' => $hasVoted,
             'receipt' => $receipt,
             'results' => $results,
@@ -161,6 +184,7 @@ class Voting extends BaseController
             'campus_latitude' => $campusSettings['campus_latitude'],
             'campus_longitude' => $campusSettings['campus_longitude'],
             'campus_radius' => $campusSettings['campus_access_radius'],
+            'campus_location_required' => CampusLocation::isConfigured($campusSettings),
             'needs_face_registration' => $needsFaceRegistration
             , 'show_completion_receipt' => $showCompletionReceipt
         ]);
@@ -169,7 +193,7 @@ class Voting extends BaseController
     public function cast()
     {
         // Check location and auto-logout if needed
-        $locationCheck = $this->checkLocationAndLogoutIfNeeded();
+        $locationCheck = $this->checkLocationAndLogoutIfNeeded(true);
         if ($locationCheck) {
             return $locationCheck;
         }
@@ -180,105 +204,108 @@ class Voting extends BaseController
         $studentModel = new \App\Models\StudentModel();
         $positionModel = new \App\Models\PositionModel();
 
-        $election_id = $this->request->getPost('election_id');
-        $votes = $this->request->getPost('votes') ?? [];
+        $electionId = filter_var($this->request->getPost('election_id'), FILTER_VALIDATE_INT);
+        $postedVotes = $this->request->getPost('votes') ?? [];
         $studentId = session()->get('user_id');
-
-        $election = $electionModel->find($election_id);
-        if (! $election || $election['status'] !== 'open') {
-            return redirect()->back()->with('error', 'The selected election is not available.');
+        if (! $electionId || ! is_array($postedVotes)) {
+            return redirect()->back()->with('error', 'Invalid ballot submission.');
         }
 
-        // Get student's department
         $student = $studentModel->find($studentId);
-        $isInactive = $student && (($student['status'] ?? 'Inactive') !== 'Active' || empty($student['is_active']));
-        if (!$student || $isInactive) {
+        $isInactive = $student && (empty($student['is_active']) && ($student['status'] ?? '') !== 'Active');
+        if (! $student || $isInactive) {
             return redirect()->back()->with('error', 'Your account is inactive and cannot vote.');
         }
-
-        $studentDepartment = $student['department'] ?? null;
-
-        // Check if student has access to this election
-        if (! $electionModel->canStudentAccess($election_id, $studentDepartment, $studentId)) {
+        if (! $electionModel->canStudentAccess($electionId, $student['department'] ?? null, $studentId)) {
             return redirect()->back()->with('error', 'You do not have access to this election.');
         }
 
-        if ($voteModel->hasCompletedVote($studentId, $election_id)) {
-            return redirect()->back()->with('error', 'You have already voted in this election.');
+        $candidateRows = $this->eligibleCandidates(
+            $electionModel->getCandidatesWithDetails($electionId, false),
+            $student['year_level'] ?? null
+        );
+        $candidatesByPosition = [];
+        foreach ($candidateRows as $candidate) {
+            $candidatesByPosition[(int) $candidate['position_id']][(int) $candidate['id']] = $candidate;
         }
 
-        if (empty($votes)) {
-            return redirect()->back()->with('error', 'Please select at least one candidate.');
-        }
-
-        $validCandidateIds = array_map('intval', array_column($electionModel->getCandidatesWithDetails($election_id), 'id'));
-
-        $db->transBegin();
-
-        // Replace an incomplete earlier attempt with this complete ballot.
-        if ($voteModel->hasVoted($studentId, $election_id)) {
-            $voteModel->where('student_id', $studentId)
-                ->where('election_id', $election_id)
-                ->delete();
-        }
-
-        try {
-            foreach ($votes as $position_id => $candidate_ids) {
-            // If it's a single candidate, make it an array for consistent handling
-            if (!is_array($candidate_ids)) {
-                $candidate_ids = [$candidate_ids];
-            }
-
-            // Verify the number of selections matches votes_required
-            $position = $positionModel->find($position_id);
-            if (!$position) {
-                $db->transRollback();
-                return redirect()->back()->with('error', 'Position not found.');
-            }
-            // Fallback to 1 if votes_required isn't set or column doesn't exist
-            $votes_required = isset($position['votes_required']) ? (int)$position['votes_required'] : 1;
-            
-            if (count($candidate_ids) !== $votes_required) {
-                $db->transRollback();
-                return redirect()->back()->with('error', 'Invalid number of selections for position. Required: ' . $votes_required . ', Selected: ' . count($candidate_ids) . '. Position: ' . htmlspecialchars($position['title']));
-            }
-
-                foreach ($candidate_ids as $candidate_id) {
-                $candidate_id = filter_var($candidate_id, FILTER_VALIDATE_INT);
-                if (! in_array($candidate_id, $validCandidateIds, true)) {
-                    $db->transRollback();
-                    return redirect()->back()->with('error', 'Invalid candidate selection.');
+        $positions = $positionModel->getByElection((int) $electionId);
+        $validatedVotes = [];
+        foreach ($positions as $position) {
+            $positionId = (int) $position['id'];
+            $selection = $postedVotes[$positionId] ?? [];
+            $selection = is_array($selection) ? $selection : [$selection];
+            $selectedIds = [];
+            foreach ($selection as $candidateId) {
+                $candidateId = filter_var($candidateId, FILTER_VALIDATE_INT);
+                if (! $candidateId || ! isset($candidatesByPosition[$positionId][$candidateId]) || in_array($candidateId, $selectedIds, true)) {
+                    return redirect()->back()->with('error', 'Your ballot contains an invalid or ineligible candidate selection.');
                 }
+                $selectedIds[] = $candidateId;
+            }
+            $votesRequired = (int) ($position['votes_required'] ?? 1);
+            if (! VotingRules::hasValidSelectionCount(count($selectedIds), $votesRequired)) {
+                return redirect()->back()->with('error', 'Please make the required number of selections for ' . $position['title'] . '.');
+            }
+            $validatedVotes[$positionId] = $selectedIds;
+        }
 
-                $inserted = $voteModel->insert([
-                    'student_id'   => $studentId,
-                    'candidate_id' => $candidate_id,
-                    'position_id'  => $position_id,
-                    'election_id'  => $election_id
-                ]);
+        foreach ($postedVotes as $positionId => $selection) {
+            if (! isset($validatedVotes[(int) $positionId])) {
+                return redirect()->back()->with('error', 'Your ballot contains an invalid position.');
+            }
+        }
 
-                    if ($inserted === false) {
-                        $db->transRollback();
-                        log_message('error', 'Vote insert failed: ' . json_encode($voteModel->errors()));
-                        return redirect()->back()->with('error', 'Your vote could not be saved. Please try again.');
+        $voteCastAt = date('Y-m-d H:i:s');
+        $db->transBegin();
+        try {
+            $lockedElection = $db->query('SELECT id, status FROM elections WHERE id = ? FOR UPDATE', [$electionId])->getRowArray();
+            if (! $lockedElection || strtolower((string) $lockedElection['status']) !== 'open') {
+                $db->transRollback();
+                return redirect()->back()->with('error', 'The selected election is not available.');
+            }
+            if ($voteModel->hasVoted($studentId, $electionId)) {
+                $db->transRollback();
+                return redirect()->back()->with('error', 'You have already submitted a ballot for this election.');
+            }
+
+            foreach ($validatedVotes as $positionId => $candidateIds) {
+                foreach ($candidateIds as $candidateId) {
+                    if ($voteModel->insert([
+                        'student_id' => $studentId,
+                        'candidate_id' => $candidateId,
+                        'position_id' => $positionId,
+                        'election_id' => $electionId,
+                        'created_at' => $voteCastAt,
+                    ]) === false) {
+                        throw new \RuntimeException('Vote insert failed: ' . json_encode($voteModel->errors()));
                     }
                 }
             }
 
             if (! $db->transStatus()) {
-                $db->transRollback();
-                log_message('error', 'Vote transaction failed for student ' . $studentId . ' and election ' . $election_id);
-                return redirect()->back()->with('error', 'Your vote could not be saved. Please try again.');
+                throw new \RuntimeException('Vote transaction failed.');
             }
-
-            $db->transCommit();
+            if (! $db->transCommit()) {
+                throw new \RuntimeException('Vote transaction could not be committed.');
+            }
         } catch (\Throwable $exception) {
             $db->transRollback();
-            log_message('error', 'Vote submission exception: ' . $exception->getMessage());
+            log_message('error', 'Vote submission failed for student ' . $studentId . ' and election ' . $electionId . ': ' . $exception->getMessage());
             return redirect()->back()->with('error', 'Your vote could not be saved. Please try again.');
         }
+        (new AuditLogModel())->record(
+            'VOTING',
+            'Student cast a vote in election ' . $electionId . ' at ' . $voteCastAt . '.',
+            $voteCastAt
+        );
 
-        return redirect()->to('/voting/' . $election_id . '?completed=1')->with('success', 'Your vote has been cast successfully!');
+        return redirect()->to('/voting/' . $electionId . '?completed=1')->with('success', 'Your vote has been cast successfully!');
+    }
+
+    private function eligibleCandidates(array $candidates, ?string $yearLevel): array
+    {
+        return VotingRules::filterEligibleCandidates($candidates, $yearLevel);
     }
 
     public function deactivateAfterVote()
@@ -298,6 +325,15 @@ class Voting extends BaseController
             'status' => 'Inactive',
             'is_active' => 0,
         ]);
+        $logoutAt = date('Y-m-d H:i:s');
+        if ($updated) {
+            (new AuditLogModel())->record('UPDATE', 'Student account was deactivated after completing a vote.');
+        }
+        (new AuditLogModel())->record(
+            'STUDENT LOGOUT',
+            'Student was logged out after completing a vote at ' . $logoutAt . '.',
+            $logoutAt
+        );
         session()->destroy();
 
         return $this->response->setJSON(['success' => (bool)$updated]);
@@ -313,9 +349,23 @@ class Voting extends BaseController
         if (!$student) {
             return redirect()->to('/login')->with('error', 'Student not found.');
         }
+
+        $departmentName = trim((string) ($student['department'] ?? ''));
+        if (! empty($student['department_id'])) {
+            $department = (new \App\Models\DepartmentModel())->find($student['department_id']);
+            $departmentName = $department['department_name'] ?? $departmentName;
+        }
+
+        $courseName = trim((string) ($student['course'] ?? ''));
+        if (! empty($student['course_id'])) {
+            $course = (new \App\Models\CourseModel())->find($student['course_id']);
+            $courseName = $course['course_name'] ?? $courseName;
+        }
         
         return view('student/account-settings', [
-            'student' => $student
+            'student' => $student,
+            'departmentName' => $departmentName,
+            'courseName' => $courseName,
         ]);
     }
 
@@ -375,6 +425,7 @@ class Voting extends BaseController
         
         // Update student
         if ($studentModel->update($studentId, $updateData)) {
+            (new AuditLogModel())->record('UPDATE', 'Student updated account settings.');
             return redirect()->to('/voting')->with('success', 'Account settings updated successfully!');
         } else {
             return redirect()->back()->withInput()->with('error', 'Failed to update account settings. Please try again.');
@@ -395,20 +446,19 @@ class Voting extends BaseController
 
         $settings = $this->getCampusSettings();
         
-        // If campus settings not configured, always allow
-        if ($settings['campus_access_radius'] === '' || $settings['campus_latitude'] === '' || $settings['campus_longitude'] === '') {
+        if (! CampusLocation::isConfigured($settings)) {
             return $this->response->setJSON(['outside_range' => false, 'message' => 'Campus settings not configured']);
         }
 
-        // If no coordinates provided, don't logout
-        if ($latValue === null || $lngValue === null) {
-            return $this->response->setJSON(['outside_range' => false, 'message' => 'Location not available']);
-        }
-
-        // Check if within range using parent class method
-        if (! $this->isWithinCampusRange($latValue, $lngValue)) {
+        if (! CampusLocation::isWithinRange($latValue, $lngValue, $settings)) {
             // Student is outside campus range - logout
             $session = session();
+            $logoutAt = date('Y-m-d H:i:s');
+            (new AuditLogModel())->record(
+                'STUDENT LOGOUT',
+                'Student was logged out after leaving the campus access range at ' . $logoutAt . '.',
+                $logoutAt
+            );
             $session->destroy();
             return $this->response->setJSON(['outside_range' => true, 'message' => 'You are outside the campus range and have been logged out']);
         }

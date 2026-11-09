@@ -21,6 +21,32 @@ class App extends BaseConfig
     public function __construct()
     {
         parent::__construct();
+        $this->forceGlobalSecureRequests = ENVIRONMENT === 'production'
+            || (bool) env('app.forceGlobalSecureRequests', false);
+
+        $configuredBaseURL = trim((string) env('app.baseURL', ''), " \t\n\r\0\x0B'\"");
+        if ($configuredBaseURL !== '') {
+            $parsedBaseURL = parse_url($configuredBaseURL);
+            if (
+                $parsedBaseURL === false
+                || ! isset($parsedBaseURL['scheme'], $parsedBaseURL['host'])
+                || ! in_array(strtolower($parsedBaseURL['scheme']), ['http', 'https'], true)
+            ) {
+                throw new \RuntimeException('app.baseURL must be an absolute HTTP or HTTPS URL.');
+            }
+            if (ENVIRONMENT === 'production' && strtolower($parsedBaseURL['scheme']) !== 'https') {
+                throw new \RuntimeException('app.baseURL must use HTTPS in production.');
+            }
+
+            $this->baseURL = rtrim($configuredBaseURL, '/') . '/';
+            $this->allowedHostnames = [$parsedBaseURL['host']];
+
+            return;
+        }
+
+        if (ENVIRONMENT === 'production') {
+            throw new \RuntimeException('Set app.baseURL to the public HTTPS URL before starting the production application.');
+        }
 
         if (PHP_SAPI === 'cli' || empty($_SERVER['HTTP_HOST'])) {
             return;
@@ -34,7 +60,8 @@ class App extends BaseConfig
 
         $isHttps = (! empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
             || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower($_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https')
-            || (isset($_SERVER['HTTP_CF_VISITOR']) && str_contains($_SERVER['HTTP_CF_VISITOR'], '"scheme":"https"'));
+            || (isset($_SERVER['HTTP_CF_VISITOR']) && str_contains($_SERVER['HTTP_CF_VISITOR'], '"scheme":"https"'))
+            || (str_ends_with($host, '.lhr.life') || str_ends_with($host, '.trycloudflare.com') || str_ends_with($host, '.loca.lt'));
         $scheme = $isHttps ? 'https' : 'http';
         $scriptPath = str_replace('\\', '/', $_SERVER['SCRIPT_NAME'] ?? '/index.php');
         $scriptDir = dirname($scriptPath);
@@ -170,7 +197,7 @@ class App extends BaseConfig
      * @see https://www.php.net/manual/en/timezones.php for list of timezones
      *      supported by PHP.
      */
-    public string $appTimezone = 'UTC';
+    public string $appTimezone = 'Asia/Manila';
 
     /**
      * --------------------------------------------------------------------------

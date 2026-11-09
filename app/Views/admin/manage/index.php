@@ -1,5 +1,6 @@
 <?= $this->extend('admin/_layout') ?>
 <?= $this->section('content') ?>
+<main class="department-management">
 <div class="page-header">
     <div class="page-title-group">
         <h1 class="page-title">Department &amp; Course Management</h1>
@@ -7,9 +8,9 @@
     </div>
 </div>
 
-<div style="display:grid; grid-template-columns: minmax(320px, 1.05fr) minmax(420px, 1.35fr); gap: 20px; margin-top: 20px;">
-    <section class="card" style="min-height: 420px;">
-        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+<div class="department-management-grid">
+    <section class="card management-card">
+        <div class="card-header management-card-header">
             <span class="card-title">Departments</span>
             <button type="button" id="addDeptBtn" class="btn btn-primary" onclick="openDepartmentModal('add')">+ Add Department</button>
         </div>
@@ -21,7 +22,6 @@
                 <table class="student-table" style="width:100%;">
                     <thead>
                         <tr>
-                            <th>Code</th>
                             <th>Name</th>
                             <th>Courses</th>
                             <th>Status</th>
@@ -34,15 +34,15 @@
         </div>
     </section>
 
-    <section class="card" style="min-height: 420px;">
-        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+    <section class="card management-card">
+        <div class="card-header management-card-header">
             <span class="card-title">Courses</span>
             <button type="button" id="addCourseBtn" class="btn btn-primary" onclick="openCourseModal('add')">+ Add Course</button>
         </div>
         <div class="card-body">
-            <div style="display:flex; gap:10px; margin-bottom: 14px; flex-wrap:wrap;">
-                <input id="courseSearch" type="search" class="form-control" placeholder="Search course..." style="flex:1; min-width: 180px;" />
-                <select id="courseDepartmentFilter" class="form-control" style="min-width: 180px;">
+            <div class="course-management-filters">
+                <input id="courseSearch" type="search" class="form-control" placeholder="Search course..." />
+                <select id="courseDepartmentFilter" class="form-control">
                     <option value="">All Departments</option>
                 </select>
             </div>
@@ -50,7 +50,6 @@
                 <table class="student-table" style="width:100%;">
                     <thead>
                         <tr>
-                            <th>Code</th>
                             <th>Name</th>
                             <th>Department</th>
                             <th>Status</th>
@@ -80,7 +79,7 @@
                     <option value="Inactive">Inactive</option>
                 </select>
             </div>
-            <div style="margin-top:16px; text-align:right; display:flex; justify-content:flex-end; gap:10px;">
+            <div class="management-modal-actions">
                 <button type="button" id="departmentCancel" class="btn btn-secondary">Cancel</button>
                 <button type="submit" class="btn btn-primary">Save Department</button>
             </div>
@@ -89,7 +88,7 @@
 </div>
 
 <div id="courseModal" class="modal" style="display:none;">
-    <div class="modal-content card register-modal" data-draggable-modal="true" style="max-width: 640px; width: min(92vw, 640px); margin: 8vh auto; padding: 22px 22px 18px; border-radius: 18px; border: 1px solid rgba(15, 23, 42, 0.08); box-shadow: 0 22px 60px rgba(15, 23, 42, 0.18); background: #fff; position: relative; cursor: default;">
+    <div class="modal-content card register-modal" data-draggable-modal="true" style="max-width: 640px; width: min(92vw, 640px); margin: 0 auto; padding: 22px 22px 18px; border-radius: 18px; border: 1px solid rgba(15, 23, 42, 0.08); box-shadow: 0 22px 60px rgba(15, 23, 42, 0.18); background: #fff; position: relative; cursor: default;">
         <h3 id="courseModalTitle" data-drag-handle="true" style="margin: 0; font-size: 1.5rem; font-weight: 700; color: #1f2937; cursor: move; user-select: none; touch-action: none;">Add Course</h3>
         <form id="courseForm" method="post" enctype="multipart/form-data" style="margin-top: 16px;">
             <?= csrf_field() ?>
@@ -110,12 +109,24 @@
                     <option value="Inactive">Inactive</option>
                 </select>
             </div>
-            <div style="margin-top:16px; text-align:right; display:flex; justify-content:flex-end; gap:10px;">
+            <div class="management-modal-actions">
                 <button type="button" id="courseCancel" class="btn btn-secondary">Cancel</button>
                 <button type="submit" class="btn btn-primary">Save Course</button>
             </div>
         </form>
     </div>
+</div>
+
+<div id="managementNotice" class="management-notice" hidden>
+    <section class="management-notice-dialog" role="alertdialog" aria-modal="true" aria-labelledby="managementNoticeTitle" aria-describedby="managementNoticeMessage">
+        <div class="management-notice-icon" aria-hidden="true"><i class="bi bi-info-circle-fill"></i></div>
+        <h2 id="managementNoticeTitle">Unable to complete action</h2>
+        <p id="managementNoticeMessage"></p>
+        <div class="management-notice-actions">
+            <button type="button" id="managementNoticeCancel" class="btn btn-secondary" hidden>Cancel</button>
+            <button type="button" id="managementNoticeClose" class="btn btn-primary">Got it</button>
+        </div>
+    </section>
 </div>
 
 <script>
@@ -124,6 +135,110 @@ const deptListApi = '<?= base_url('admin/departments/list') ?>';
 const courseApi = '<?= base_url('admin/courses/all') ?>';
 let departmentList = [];
 let courseList = [];
+
+function showManagementNotice(message, title = 'Unable to complete action') {
+    const notice = document.getElementById('managementNotice');
+    const noticeTitle = document.getElementById('managementNoticeTitle');
+    const noticeMessage = document.getElementById('managementNoticeMessage');
+    const cancelButton = document.getElementById('managementNoticeCancel');
+    const closeButton = document.getElementById('managementNoticeClose');
+    if (!notice || !noticeTitle || !noticeMessage || !cancelButton || !closeButton) return;
+
+    noticeTitle.textContent = title;
+    noticeMessage.textContent = message;
+    cancelButton.hidden = true;
+    closeButton.textContent = 'Got it';
+    closeButton.classList.remove('is-danger');
+    notice.hidden = false;
+    const previousFocus = document.activeElement;
+    closeButton.focus();
+
+    const close = () => {
+        notice.hidden = true;
+        closeButton.removeEventListener('click', close);
+        cancelButton.removeEventListener('click', close);
+        notice.removeEventListener('click', onBackdropClick);
+        document.removeEventListener('keydown', onKeyDown);
+        if (previousFocus instanceof HTMLElement) previousFocus.focus();
+    };
+    const onBackdropClick = event => {
+        if (event.target === notice) close();
+    };
+    const onKeyDown = event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            close();
+        } else if (event.key === 'Tab') {
+            event.preventDefault();
+            closeButton.focus();
+        }
+    };
+
+    closeButton.addEventListener('click', close);
+    cancelButton.addEventListener('click', close);
+    notice.addEventListener('click', onBackdropClick);
+    document.addEventListener('keydown', onKeyDown);
+}
+
+function confirmManagementAction(title, message, confirmLabel = 'Delete') {
+    const notice = document.getElementById('managementNotice');
+    const noticeTitle = document.getElementById('managementNoticeTitle');
+    const noticeMessage = document.getElementById('managementNoticeMessage');
+    const cancelButton = document.getElementById('managementNoticeCancel');
+    const confirmButton = document.getElementById('managementNoticeClose');
+    const icon = document.querySelector('.management-notice-icon');
+    if (!notice || !noticeTitle || !noticeMessage || !cancelButton || !confirmButton || !icon) {
+        return Promise.resolve(false);
+    }
+
+    noticeTitle.textContent = title;
+    noticeMessage.textContent = message;
+    cancelButton.hidden = false;
+    confirmButton.textContent = confirmLabel;
+    confirmButton.classList.add('is-danger');
+    icon.classList.add('is-danger');
+    notice.hidden = false;
+    const previousFocus = document.activeElement;
+    cancelButton.focus();
+
+    return new Promise(resolve => {
+        let resolved = false;
+        const finish = confirmed => {
+            if (resolved) return;
+            resolved = true;
+            notice.hidden = true;
+            cancelButton.removeEventListener('click', onCancel);
+            confirmButton.removeEventListener('click', onConfirm);
+            notice.removeEventListener('click', onBackdropClick);
+            document.removeEventListener('keydown', onKeyDown);
+            cancelButton.hidden = true;
+            confirmButton.textContent = 'Got it';
+            confirmButton.classList.remove('is-danger');
+            icon.classList.remove('is-danger');
+            if (previousFocus instanceof HTMLElement) previousFocus.focus();
+            resolve(confirmed);
+        };
+        const onCancel = () => finish(false);
+        const onConfirm = () => finish(true);
+        const onBackdropClick = event => {
+            if (event.target === notice) finish(false);
+        };
+        const onKeyDown = event => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                finish(false);
+            } else if (event.key === 'Tab') {
+                event.preventDefault();
+                (document.activeElement === cancelButton ? confirmButton : cancelButton).focus();
+            }
+        };
+
+        cancelButton.addEventListener('click', onCancel);
+        confirmButton.addEventListener('click', onConfirm);
+        notice.addEventListener('click', onBackdropClick);
+        document.addEventListener('keydown', onKeyDown);
+    });
+}
 
 async function fetchJson(url) {
     const res = await fetch(url);
@@ -145,20 +260,18 @@ async function loadDepartmentManagement() {
     const filter = document.getElementById('deptSearch').value.trim().toLowerCase();
     const tbody = document.getElementById('departmentsTableBody');
     const rows = departmentList.filter(dept => {
-        const text = `${dept.department_code || ''} ${dept.department_name || ''}`.toLowerCase();
+        const text = `${dept.department_name || ''}`.toLowerCase();
         return text.includes(filter);
     });
 
     tbody.innerHTML = rows.length ? rows.map(dept => `
         <tr>
-            <td>${dept.department_code || '—'}</td>
             <td>${dept.department_name || '—'}</td>
             <td>${Number(dept.course_count || 0)} ${Number(dept.course_count || 0) === 1 ? 'Course' : 'Courses'}</td>
             <td>${departmentStatusChip(dept.status)}</td>
             <td>
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <div class="management-actions">
                     <button type="button" class="btn btn-sm btn-secondary" data-action="dept-edit" data-id="${dept.id}">Edit</button>
-                    <button type="button" class="btn btn-sm btn-warning" data-action="dept-toggle" data-id="${dept.id}">${dept.status === 'Active' ? 'Deactivate' : 'Activate'}</button>
                     <button type="button" class="btn btn-sm btn-danger" data-action="dept-delete" data-id="${dept.id}">Delete</button>
                 </div>
             </td>
@@ -168,46 +281,53 @@ async function loadDepartmentManagement() {
     const deptSelect = document.getElementById('course_department');
     if (deptSelect) {
         const activeDepartments = departmentList.filter(dept => dept.status === 'Active');
+        const selectedDepartment = deptSelect.value || document.getElementById('courseDepartmentFilter')?.value || '';
         deptSelect.innerHTML = '<option value="">Select Department</option>' + activeDepartments.map(dept => `
-            <option value="${dept.id}">${dept.department_code} - ${dept.department_name}</option>
+            <option value="${dept.id}">${dept.department_name}</option>
         `).join('');
+        if (selectedDepartment && [...deptSelect.options].some(opt => opt.value === selectedDepartment)) {
+            deptSelect.value = selectedDepartment;
+        }
     }
 
     const filterSelect = document.getElementById('courseDepartmentFilter');
     if (filterSelect) {
+        const selectedFilter = filterSelect.value || '';
         filterSelect.innerHTML = '<option value="">All Departments</option>' + departmentList.map(dept => `
-            <option value="${dept.id}">${dept.department_code} - ${dept.department_name}</option>
+            <option value="${dept.id}">${dept.department_name}</option>
         `).join('');
+        if (selectedFilter && [...filterSelect.options].some(opt => opt.value === selectedFilter)) {
+            filterSelect.value = selectedFilter;
+        }
     }
 }
 
 async function loadCourseManagement() {
     courseList = await fetchJson(courseApi);
     const search = document.getElementById('courseSearch').value.trim().toLowerCase();
-    const selectedDepartment = document.getElementById('courseDepartmentFilter').value;
+    const filterSelect = document.getElementById('courseDepartmentFilter');
+    const selectedDepartment = filterSelect ? filterSelect.value : '';
     const tbody = document.getElementById('coursesTableBody');
 
     const rows = courseList.filter(course => {
         const matchesDepartment = !selectedDepartment || String(course.department_id) === String(selectedDepartment);
-        const matchesSearch = `${course.course_code || ''} ${course.course_name || ''} ${course.department_name || ''}`.toLowerCase().includes(search);
+        const matchesSearch = `${course.course_name || ''} ${course.department_name || ''}`.toLowerCase().includes(search);
         return matchesDepartment && matchesSearch;
     });
 
     tbody.innerHTML = rows.length ? rows.map(course => `
         <tr>
-            <td>${course.course_code || '—'}</td>
             <td>${course.course_name || '—'}</td>
-            <td>${course.department_code ? `${course.department_code} - ${course.department_name}` : 'Unassigned'}</td>
+            <td>${course.department_name || 'Unassigned'}</td>
             <td>${courseStatusChip(course.status)}</td>
             <td>
-                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <div class="management-actions">
                     <button type="button" class="btn btn-sm btn-secondary" data-action="course-edit" data-id="${course.id}">Edit</button>
-                    <button type="button" class="btn btn-sm btn-warning" data-action="course-toggle" data-id="${course.id}">${course.status === 'Active' ? 'Deactivate' : 'Activate'}</button>
                     <button type="button" class="btn btn-sm btn-danger" data-action="course-delete" data-id="${course.id}">Delete</button>
                 </div>
             </td>
         </tr>
-    `).join('') : '<tr><td colspan="5">No courses found.</td></tr>';
+    `).join('') : '<tr><td colspan="4">No courses found.</td></tr>';
 }
 
 async function submitFormWithJson(form, apiUrl) {
@@ -288,6 +408,8 @@ async function openDepartmentModal(mode, departmentId = null) {
         title.textContent = 'Add Department';
         form.dataset.action = '<?= base_url('admin/departments/store') ?>';
         form.reset();
+        inputs.name.value = '';
+        inputs.status.value = 'Active';
     }
 
     modal.classList.add('active');
@@ -301,32 +423,34 @@ async function openCourseModal(mode, courseId = null) {
     const form = document.getElementById('courseForm');
     const title = document.getElementById('courseModalTitle');
     const inputs = {
-        code: document.getElementById('course_code'),
         name: document.getElementById('course_name'),
         department: document.getElementById('course_department'),
         status: document.getElementById('course_status')
     };
 
-    if (!modal || !form || !title || !inputs.code || !inputs.name || !inputs.department || !inputs.status) {
+    if (!modal || !form || !title || !inputs.name || !inputs.department || !inputs.status) {
         return;
     }
 
     await loadDepartmentManagement();
+
+    const selectedDepartment = document.getElementById('courseDepartmentFilter')?.value || '';
 
     if (mode === 'edit' && courseId) {
         const course = courseList.find(item => String(item.id) === String(courseId));
         if (!course) return;
         title.textContent = 'Edit Course';
         form.dataset.action = `<?= base_url('admin/courses/update') ?>/${course.id}`;
-        inputs.code.value = course.course_code || '';
         inputs.name.value = course.course_name || '';
-        inputs.department.value = course.department_id || '';
+        inputs.department.value = course.department_id || selectedDepartment || '';
         inputs.status.value = course.status || 'Active';
     } else {
         title.textContent = 'Add Course';
         form.dataset.action = '<?= base_url('admin/courses/store') ?>';
         form.reset();
-        inputs.department.value = '';
+        inputs.name.value = '';
+        inputs.department.value = selectedDepartment || '';
+        inputs.status.value = 'Active';
     }
 
     modal.classList.add('active');
@@ -339,57 +463,47 @@ async function deleteDepartment(departmentId) {
     const department = departmentList.find(item => String(item.id) === String(departmentId));
     if (!department) return;
     if (Number(department.course_count || 0) > 0) {
-        alert('This department contains courses. Please remove or reassign the courses before deleting this department.');
+        const courseCount = Number(department.course_count);
+        showManagementNotice(
+            `This department has ${courseCount} ${courseCount === 1 ? 'course' : 'courses'} assigned. Reassign or delete ${courseCount === 1 ? 'it' : 'them'} before deleting the department.`,
+            "Department can't be deleted yet"
+        );
         return;
     }
 
-    if (!confirm(`Delete department ${department.department_code}?`)) return;
+    if (!await confirmManagementAction(
+        'Delete this department?',
+        `Delete "${department.department_name}"? This action cannot be undone.`
+    )) return;
 
     const response = await fetch(`<?= base_url('admin/departments/delete') ?>/${departmentId}`, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
     const result = await response.json();
 
     if (!result.success) {
-        alert(result.message || 'Unable to delete department.');
+        showManagementNotice(result.message || 'Unable to delete department.', 'Department not deleted');
         return;
     }
 
-    await loadDepartmentManagement();
-    await loadCourseManagement();
-}
-
-async function toggleDepartment(departmentId) {
-    const response = await fetch(`<?= base_url('admin/departments/toggle') ?>/${departmentId}`, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-    const result = await response.json();
-    if (!result.success) {
-        alert('Unable to update department status.');
-        return;
-    }
     await loadDepartmentManagement();
     await loadCourseManagement();
 }
 
 async function deleteCourse(courseId) {
-    if (!confirm('Delete this course?')) return;
+    const course = courseList.find(item => String(item.id) === String(courseId));
+    const courseName = course?.course_name || 'this course';
+    if (!await confirmManagementAction(
+        'Delete this course?',
+        `Delete "${courseName}"? This action cannot be undone.`
+    )) return;
 
     const response = await fetch(`<?= base_url('admin/courses/delete') ?>/${courseId}`, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
     const result = await response.json();
 
     if (!result.success) {
-        alert(result.message || 'Unable to delete course.');
+        showManagementNotice(result.message || 'Unable to delete course.', 'Course not deleted');
         return;
     }
 
-    await loadDepartmentManagement();
-    await loadCourseManagement();
-}
-
-async function toggleCourse(courseId) {
-    const response = await fetch(`<?= base_url('admin/courses/toggle') ?>/${courseId}`, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-    const result = await response.json();
-    if (!result.success) {
-        alert('Unable to update course status.');
-        return;
-    }
     await loadDepartmentManagement();
     await loadCourseManagement();
 }
@@ -489,7 +603,6 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         const action = button.dataset.action;
         if (action === 'dept-edit') openDepartmentModal('edit', departmentId);
-        if (action === 'dept-toggle') toggleDepartment(departmentId);
         if (action === 'dept-delete') deleteDepartment(departmentId);
     });
 
@@ -501,7 +614,6 @@ document.addEventListener('DOMContentLoaded', async function () {
 
         const action = button.dataset.action;
         if (action === 'course-edit') openCourseModal('edit', courseId);
-        if (action === 'course-toggle') toggleCourse(courseId);
         if (action === 'course-delete') deleteCourse(courseId);
     });
 
@@ -511,6 +623,231 @@ document.addEventListener('DOMContentLoaded', async function () {
 </script>
 
 <style>
+    .department-management {
+        width: 100%;
+        max-width: 1440px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+
+    .department-management .page-header {
+        margin: 0 0 20px;
+    }
+
+    .department-management .page-title-group {
+        min-width: 0;
+    }
+
+    .department-management .page-title,
+    .department-management .page-copy {
+        overflow-wrap: anywhere;
+    }
+
+    .department-management-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: start;
+        gap: 20px;
+    }
+
+    .department-management .management-card {
+        min-width: 0;
+        min-height: 420px;
+        overflow: hidden;
+    }
+
+    .department-management .management-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+    }
+
+    .department-management .management-card-header .card-title {
+        min-width: 0;
+        margin: 0;
+    }
+
+    .department-management .btn {
+        display: inline-flex;
+        flex: 0 0 auto;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        padding: 9px 16px;
+        border-radius: 9px;
+        line-height: 1.2;
+        text-align: center;
+        white-space: normal;
+    }
+
+    .department-management .management-card-header .btn {
+        min-height: 40px;
+    }
+
+    .department-management .management-actions {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        min-width: 0;
+    }
+
+    .department-management .management-actions .btn {
+        min-height: 34px;
+        padding: 6px 8px;
+        border-radius: 7px;
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+
+    .management-notice {
+        position: fixed;
+        inset: 0;
+        z-index: 13000;
+        display: grid;
+        place-items: center;
+        padding: 1rem;
+        background: rgba(3, 9, 30, 0.72);
+        backdrop-filter: blur(5px);
+        -webkit-backdrop-filter: blur(5px);
+    }
+
+    .management-notice[hidden] {
+        display: none !important;
+    }
+
+    .management-notice-dialog {
+        width: min(100%, 440px);
+        padding: clamp(1.25rem, 4vw, 1.75rem);
+        border: 1px solid rgba(15, 23, 42, 0.1);
+        border-radius: 18px;
+        background: #FFFFFF;
+        color: #111827;
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
+    }
+
+    body.dashboard-page .department-management .management-notice-icon,
+    body.dashboard-page .department-management .management-notice-icon i {
+        display: grid;
+        width: 46px;
+        height: 46px;
+        place-items: center;
+        margin-bottom: 1rem;
+        border-radius: 14px;
+        background: #FEF3C7;
+        color: #B45309 !important;
+        font-size: 1.25rem;
+    }
+
+    body.dashboard-page .department-management .management-notice-icon.is-danger {
+        background: #FEE2E2;
+        color: #B91C1C !important;
+    }
+
+    body.dashboard-page .department-management .management-notice-dialog h2 {
+        margin: 0 0 0.5rem;
+        color: #111827 !important;
+        font-size: 1.2rem;
+        line-height: 1.35;
+    }
+
+    body.dashboard-page .department-management .management-notice-dialog p {
+        margin: 0;
+        color: #4B5563 !important;
+        line-height: 1.6;
+    }
+
+    .management-notice-actions {
+        display: flex;
+        justify-content: center;
+        margin-top: 1.25rem;
+    }
+
+    .management-notice-actions .btn {
+        min-width: 96px;
+        color: #111827 !important;
+    }
+
+    .management-notice-actions #managementNoticeCancel[hidden] {
+        display: none !important;
+    }
+
+    body.dashboard-page .department-management .management-notice-actions #managementNoticeClose.is-danger {
+        background: #DC2626 !important;
+        border-color: #B91C1C !important;
+        color: #FFFFFF !important;
+    }
+
+    body.dashboard-page .department-management .management-notice-actions #managementNoticeClose.is-danger:hover {
+        background: #B91C1C !important;
+        color: #FFFFFF !important;
+    }
+
+    body.dashboard-page .department-management .management-actions .btn,
+    body.dashboard-page .department-management .management-actions .btn:hover,
+    body.dashboard-page .department-management .management-actions .btn:focus,
+    body.dashboard-page .department-management .management-actions .btn:active {
+        color: #000000 !important;
+    }
+
+    .department-management .course-management-filters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 14px;
+    }
+
+    .department-management .course-management-filters .form-control {
+        flex: 1 1 180px;
+        min-width: 0;
+    }
+
+    .department-management .table-responsive {
+        width: 100%;
+        overflow-x: hidden;
+    }
+
+    .department-management .student-table {
+        width: 100%;
+        min-width: 0;
+        table-layout: fixed;
+    }
+
+    .department-management .student-table th,
+    .department-management .student-table td {
+        padding-right: 8px;
+        padding-left: 8px;
+        vertical-align: middle;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+    }
+
+    .department-management .student-table th:last-child,
+    .department-management .student-table td:last-child {
+        width: 36%;
+    }
+
+    .department-management .management-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 16px;
+    }
+
+    body.dashboard-page .department-management .management-modal-actions #departmentCancel,
+    body.dashboard-page .department-management .management-modal-actions #courseCancel,
+    body.dashboard-page .department-management .management-modal-actions #departmentCancel:hover,
+    body.dashboard-page .department-management .management-modal-actions #courseCancel:hover,
+    body.dashboard-page .department-management .management-modal-actions #departmentCancel:focus,
+    body.dashboard-page .department-management .management-modal-actions #courseCancel:focus,
+    body.dashboard-page .department-management .management-modal-actions #departmentCancel:active,
+    body.dashboard-page .department-management .management-modal-actions #courseCancel:active {
+        color: #000000 !important;
+    }
+
     .badge {
         display: inline-block;
         padding: 4px 10px;
@@ -531,12 +868,68 @@ document.addEventListener('DOMContentLoaded', async function () {
     }
     .modal {
         display: none !important;
+        overflow-y: auto;
+        padding: 20px 0;
     }
     .modal.active {
         display: flex !important;
         align-items: center;
         justify-content: center;
+        overflow-y: auto;
+    }
+    .modal-content {
+        width: min(640px, calc(100% - 32px)) !important;
+        margin: auto !important;
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+    }
+
+    @media (max-width: 1100px) {
+        .department-management-grid {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .department-management .management-card {
+            min-height: 0;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .department-management {
+            padding: 14px;
+        }
+
+        .department-management .page-header {
+            margin-bottom: 16px;
+        }
+
+        .department-management-grid {
+            gap: 14px;
+        }
+
+        .department-management .management-card-header {
+            align-items: stretch;
+        }
+
+        .department-management .management-card-header .btn {
+            width: 100%;
+        }
+
+        .department-management .management-actions {
+            min-width: 0;
+        }
+
+        .department-management .management-modal-actions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .department-management .management-modal-actions .btn {
+            width: 100%;
+            padding-inline: 10px;
+        }
     }
 </style>
 
+</main>
 <?= $this->endSection() ?>

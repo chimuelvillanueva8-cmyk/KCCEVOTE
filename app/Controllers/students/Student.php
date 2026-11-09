@@ -3,6 +3,8 @@
 namespace App\Controllers\students;
 
 use App\Controllers\BaseController;
+use App\Libraries\FaceIdentity;
+use App\Models\AuditLogModel;
 use App\Models\StudentModel;
 use CodeIgniter\HTTP\IncomingRequest;
 
@@ -27,6 +29,7 @@ class Student extends BaseController
             'department' => $this->request->getGet('department'),
             'course' => $this->request->getGet('course'),
             'year_level' => $this->request->getGet('year_level'),
+            'school_year' => $this->request->getGet('school_year'),
             'section' => $this->request->getGet('section'),
             'is_active' => $this->request->getGet('is_active'),
             'face_registered' => $this->request->getGet('face_registered'),
@@ -38,6 +41,9 @@ class Student extends BaseController
             $builder = $builder->groupStart()
                 ->like('student_id', $q)
                 ->orLike('full_name', $q)
+                ->orLike('first_name', $q)
+                ->orLike('middle_name', $q)
+                ->orLike('last_name', $q)
                 ->orLike('department', $q)
                 ->orLike('course', $q)
                 ->orLike('section', $q)
@@ -48,6 +54,26 @@ class Student extends BaseController
             if ($val !== null && $val !== '') {
                 if ($key === 'is_active') {
                     $builder = $builder->where('is_active', $val);
+                } elseif ($key === 'department') {
+                    $department = (new \App\Models\DepartmentModel())->find($val);
+                    if ($department) {
+                        $builder->groupStart()
+                            ->where('department_id', $department['id'])
+                            ->orWhere('department', $department['department_name'])
+                            ->groupEnd();
+                    } else {
+                        $builder->where('id', 0);
+                    }
+                } elseif ($key === 'course') {
+                    $course = (new \App\Models\CourseModel())->find($val);
+                    if ($course) {
+                        $builder->groupStart()
+                            ->where('course_id', $course['id'])
+                            ->orWhere('course', $course['course_name'])
+                            ->groupEnd();
+                    } else {
+                        $builder->where('id', 0);
+                    }
                 } else {
                     $builder = $builder->where($key, $val);
                 }
@@ -63,7 +89,19 @@ class Student extends BaseController
             ->findAll();
 
         // Never expose password hashes in the normal student list response.
+        $deptModel = new \App\Models\DepartmentModel();
+        $courseModel = new \App\Models\CourseModel();
         foreach ($students as &$student) {
+            if (empty($student['department']) && !empty($student['department_id'])) {
+                $dept = $deptModel->find($student['department_id']);
+                $student['department'] = $dept['department_name'] ?? $dept['department_code'] ?? '';
+                $student['department_name'] = $student['department'];
+            }
+            if (empty($student['course']) && !empty($student['course_id'])) {
+                $course = $courseModel->find($student['course_id']);
+                $student['course'] = $course['course_name'] ?? $course['course_code'] ?? '';
+                $student['course_name'] = $student['course'];
+            }
             unset($student['password'], $student['face_descriptor'], $student['id_photo_hash'], $student['failed_login_attempts'], $student['locked_until']);
         }
 
@@ -72,9 +110,12 @@ class Student extends BaseController
         log_message('debug', 'Students list sample: ' . json_encode(array_slice($students, 0, 5)));
 
         // provide filter options (distinct values)
-        $departments = $this->studentModel->distinct()->select('department')->where('department IS NOT NULL', null, false)->orderBy('department','ASC')->findColumn('department');
-        $courses = $this->studentModel->distinct()->select('course')->where('course IS NOT NULL', null, false)->orderBy('course','ASC')->findColumn('course');
         $years = $this->studentModel->distinct()->select('year_level')->where('year_level IS NOT NULL', null, false)->orderBy('year_level','ASC')->findColumn('year_level');
+        $schoolYears = $this->studentModel->distinct()->select('school_year')
+            ->where('school_year IS NOT NULL', null, false)
+            ->where('school_year !=', '')
+            ->orderBy('school_year', 'ASC')
+            ->findColumn('school_year');
         $sections = $this->studentModel->distinct()->select('section')->where('section IS NOT NULL', null, false)->orderBy('section','ASC')->findColumn('section');
 
         $summaryModel = new StudentModel();
@@ -95,9 +136,8 @@ class Student extends BaseController
                 'face_registered' => $faceRegisteredCount,
             ],
             'filters' => [
-                'departments' => array_values(array_filter($departments)),
-                'courses' => array_values(array_filter($courses)),
                 'years' => array_values(array_filter($years)),
+                'school_years' => array_values(array_filter($schoolYears)),
                 'sections' => array_values(array_filter($sections)),
             ],
         ]);
@@ -112,14 +152,37 @@ class Student extends BaseController
             $data['student_id'] = preg_replace('/\D+/', '', $data['student_id']);
         }
 
+        // Build full_name if not provided
+        if (empty($data['full_name']) && (!empty($data['first_name']) || !empty($data['last_name']))) {
+            $data['full_name'] = trim(($data['first_name'] ?? '') . ' ' . ($data['middle_name'] ?? '') . ' ' . ($data['last_name'] ?? ''));
+        }
+
+        // Sync department and course names if department_id or course_id is provided
+        if (!empty($data['department_id'])) {
+            $deptModel = new \App\Models\DepartmentModel();
+            $dept = $deptModel->find($data['department_id']);
+            if ($dept) {
+                $data['department'] = $dept['department_name'] ?? $dept['department_code'] ?? '';
+            }
+        }
+        if (!empty($data['course_id'])) {
+            $courseModel = new \App\Models\CourseModel();
+            $course = $courseModel->find($data['course_id']);
+            if ($course) {
+                $data['course'] = $course['course_name'] ?? $course['course_code'] ?? '';
+            }
+        }
+
         // auto-generate username and password, but use the client-generated password when provided
         $data['username'] = $data['student_id'] ?? '';
         $plainPassword = $data['password'] ?? $this->generatePassword();
         $data['password'] = $plainPassword;
         $data['is_active'] = $data['is_active'] ?? 1;
+        $data['status'] = ((int) $data['is_active'] === 1) ? 'Active' : 'Inactive';
 
         if ($this->studentModel->insert($data)) {
             $id = $this->studentModel->getInsertID();
+            (new AuditLogModel())->record('CREATE', 'Created student account ' . $data['student_id'] . '.');
             return $this->response->setJSON(['success' => true, 'id' => $id, 'password' => $plainPassword]);
         }
 
@@ -134,12 +197,50 @@ class Student extends BaseController
             return $this->response->setJSON(['success' => false, 'errors' => ['Student not found.']]);
         }
 
+        // sanitize student_id to digits only if provided
+        if (!empty($data['student_id'])) {
+            $data['student_id'] = preg_replace('/\D+/', '', $data['student_id']);
+            $data['username'] = $data['student_id'];
+        }
+
+        // Build full_name if not provided
+        if (empty($data['full_name']) && (!empty($data['first_name']) || !empty($data['last_name']))) {
+            $data['full_name'] = trim(($data['first_name'] ?? '') . ' ' . ($data['middle_name'] ?? '') . ' ' . ($data['last_name'] ?? ''));
+        }
+
+        // Sync department and course names if department_id or course_id is provided
+        if (!empty($data['department_id'])) {
+            $deptModel = new \App\Models\DepartmentModel();
+            $dept = $deptModel->find($data['department_id']);
+            if ($dept) {
+                $data['department'] = $dept['department_name'] ?? $dept['department_code'] ?? '';
+            }
+        }
+        if (!empty($data['course_id'])) {
+            $courseModel = new \App\Models\CourseModel();
+            $course = $courseModel->find($data['course_id']);
+            if ($course) {
+                $data['course'] = $course['course_name'] ?? $course['course_code'] ?? '';
+            }
+        }
+
         if (isset($data['is_active']) && (string) $data['is_active'] !== (string) ($existing['is_active'] ?? '')) {
             $data['password'] = $this->generatePassword();
             $data['must_change_password'] = 1;
         }
 
+        if (isset($data['is_active'])) {
+            $data['status'] = ((int) $data['is_active'] === 1) ? 'Active' : 'Inactive';
+        }
+
+        // Configure validation rules to ignore current ID for unique checks
+        $rules = $this->studentModel->getValidationRules();
+        $rules['student_id'] = "required|is_natural_no_zero|is_unique[students.student_id,id,{$id}]";
+        $rules['username'] = "permit_empty|is_unique[students.username,id,{$id}]";
+        $this->studentModel->setValidationRules($rules);
+
         if ($this->studentModel->update($id, $data)) {
+            (new AuditLogModel())->record('UPDATE', 'Updated student account ' . $existing['student_id'] . '.');
             return $this->response->setJSON(['success' => true]);
         }
         return $this->response->setJSON(['success' => false, 'errors' => $this->studentModel->errors()]);
@@ -147,7 +248,11 @@ class Student extends BaseController
 
     public function delete($id)
     {
+        $student = $this->studentModel->find($id);
         if ($this->studentModel->delete($id)) {
+            if ($student) {
+                (new AuditLogModel())->record('DELETE', 'Deleted student account ' . $student['student_id'] . '.');
+            }
             return $this->response->setJSON(['success' => true]);
         }
         return $this->response->setJSON(['success' => false]);
@@ -168,22 +273,22 @@ class Student extends BaseController
                 $passwords = [];
                 foreach ($ids as $id) {
                     $newPassword = $this->generatePassword();
-                    $this->studentModel->update($id, ['is_active' => 1, 'password' => $newPassword, 'must_change_password' => 1]);
+                    $this->studentModel->update($id, ['is_active' => 1, 'status' => 'Active', 'password' => $newPassword, 'must_change_password' => 1]);
                     $passwords[$id] = $newPassword;
                 }
+                (new AuditLogModel())->record('UPDATE', 'Activated ' . count($ids) . ' student account(s).');
                 return $this->response->setJSON(['success' => true, 'passwords' => $passwords]);
             case 'deactivate':
-                $passwords = [];
                 foreach ($ids as $id) {
-                    $newPassword = $this->generatePassword();
-                    $this->studentModel->update($id, ['is_active' => 0, 'password' => $newPassword, 'must_change_password' => 1]);
-                    $passwords[$id] = $newPassword;
+                    $this->studentModel->update($id, ['is_active' => 0, 'status' => 'Inactive']);
                 }
-                return $this->response->setJSON(['success' => true, 'passwords' => $passwords]);
+                (new AuditLogModel())->record('UPDATE', 'Deactivated ' . count($ids) . ' student account(s).');
+                return $this->response->setJSON(['success' => true]);
             case 'delete':
                 foreach ($ids as $id) {
                     $this->studentModel->delete($id);
                 }
+                (new AuditLogModel())->record('DELETE', 'Deleted ' . count($ids) . ' student account(s).');
                 break;
         }
 
@@ -192,7 +297,22 @@ class Student extends BaseController
 
     public function uploadFace($id)
     {
-        // Accept base64 images in POST: faceImages[]
+        $payload = FaceIdentity::normalizePayload($this->request->getPost('face_descriptor'));
+        $descriptor = $payload['descriptor'] ?? [];
+        if (! FaceIdentity::isValidDescriptor($descriptor)) {
+            return $this->response->setStatusCode(422)->setJSON([
+                'success' => false,
+                'message' => 'A valid face descriptor is required.',
+            ]);
+        }
+
+        if (! $this->studentModel->find($id)) {
+            return $this->response->setStatusCode(404)->setJSON([
+                'success' => false,
+                'message' => 'Student not found.',
+            ]);
+        }
+
         $faceImages = $this->request->getPost('faceImages');
         $saved = [];
         if ($faceImages && is_array($faceImages)) {
@@ -209,21 +329,30 @@ class Student extends BaseController
         }
 
         if (!empty($saved)) {
-            $this->studentModel->update($id, [
+            if (! $this->studentModel->update($id, [
                 'face_registered' => 1,
-                'face_descriptor' => json_encode($saved),
+                'face_descriptor' => json_encode(['descriptor' => array_values($descriptor)]),
                 'face_enrolled_at' => date('Y-m-d H:i:s')
-            ]);
+            ])) {
+                log_message('error', 'Unable to save administrator-enrolled face descriptor.');
+                return $this->response->setStatusCode(500)->setJSON([
+                    'success' => false,
+                    'message' => 'Face enrollment could not be saved.',
+                ]);
+            }
+
+            (new AuditLogModel())->record('UPDATE', 'Updated face registration for student account ' . $id . '.');
             return $this->response->setJSON(['success' => true, 'files' => $saved]);
         }
 
-        return $this->response->setJSON(['success' => false, 'message' => 'No face images received']);
+        return $this->response->setStatusCode(422)->setJSON(['success' => false, 'message' => 'No face images received']);
     }
 
     public function resetPassword($id)
     {
         $plain = $this->generatePassword();
         if ($this->studentModel->update($id, ['password' => $plain, 'must_change_password' => 1])) {
+            (new AuditLogModel())->record('UPDATE', 'Reset password for student account ' . $id . '.');
             return $this->response->setJSON(['success' => true, 'password' => $plain]);
         }
         return $this->response->setJSON(['success' => false]);

@@ -3,6 +3,8 @@
 namespace App\Controllers;
 
 use CodeIgniter\Controller;
+use App\Libraries\CampusLocation;
+use App\Models\ElectionModel;
 use App\Models\SettingModel;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -40,6 +42,8 @@ abstract class BaseController extends Controller
         // Caution: Do not edit this line.
         parent::initController($request, $response, $logger);
 
+        (new ElectionModel())->syncScheduledStatuses();
+
         // Preload any models, libraries, etc, here.
         // $this->session = service('session');
     }
@@ -57,39 +61,16 @@ abstract class BaseController extends Controller
 
     protected function calculateDistanceMeters(float $lat1, float $lng1, float $lat2, float $lng2): float
     {
-        $earthRadius = 6371000.0; // meters
+        return CampusLocation::calculateDistanceMeters($lat1, $lng1, $lat2, $lng2);
+    }
 
-        $deltaLat = deg2rad($lat2 - $lat1);
-        $deltaLng = deg2rad($lng2 - $lng1);
-
-        $a = sin($deltaLat / 2) * sin($deltaLat / 2)
-            + cos(deg2rad($lat1)) * cos(deg2rad($lat2))
-            * sin($deltaLng / 2) * sin($deltaLng / 2);
-
-        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
-
-        return $earthRadius * $c;
+    protected function isCampusLocationConfigured(): bool
+    {
+        return CampusLocation::isConfigured($this->getCampusSettings());
     }
 
     protected function isWithinCampusRange(?float $latitude, ?float $longitude): bool
     {
-        $settings = $this->getCampusSettings();
-
-        // If campus settings are not configured, allow access
-        if ($settings['campus_access_radius'] === '' || $settings['campus_latitude'] === '' || $settings['campus_longitude'] === '') {
-            return true;
-        }
-
-        // If coordinates are not provided, still allow access (geolocation may have failed)
-        // Campus security will be logged but not enforced
-        if ($latitude === null || $longitude === null) {
-            return true;
-        }
-
-        $lat = floatval($settings['campus_latitude']);
-        $lng = floatval($settings['campus_longitude']);
-        $radius = floatval($settings['campus_access_radius']);
-
-        return $this->calculateDistanceMeters($lat, $lng, $latitude, $longitude) <= $radius;
+        return CampusLocation::isWithinRange($latitude, $longitude, $this->getCampusSettings());
     }
 }

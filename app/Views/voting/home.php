@@ -37,14 +37,6 @@
                     <span class="burger-nav-text">Open Events</span>
                 </a>
             </li>
-            <?php if ($selectedElection): ?>
-                <li class="burger-nav-item" role="listitem">
-                    <a href="<?= base_url('voting/' . $selectedElection['id']) ?>" class="burger-nav-link" role="menuitem">
-                        <span class="burger-nav-icon">📅</span>
-                        <span class="burger-nav-text">Current Event</span>
-                    </a>
-                </li>
-            <?php endif; ?>
             <li class="burger-nav-item" role="listitem">
                 <a href="<?= base_url('student/account-settings') ?>" class="burger-nav-link" role="menuitem">
                     <span class="burger-nav-icon">⚙️</span>
@@ -67,9 +59,9 @@
             <span></span>
         </span>
     </button>
-    <div class="container">
+    <div class="container voting-page-container">
         <header class="dashboard-header">
-            <h1 style="color: #FFFFFF;">Welcome, <?= htmlspecialchars($full_name) ?>!</h1>
+            <h1 class="voting-welcome-title">Welcome, <?= esc($full_name) ?>!</h1>
         </header>
 
         <?php if (session()->getFlashdata('error')): ?>
@@ -91,9 +83,9 @@
             <?php if (empty($elections)): ?>
                 <div class="alert alert-info">There is no active election at this time.</div>
             <?php else: ?>
-                <div class="dashboard-card">
+                <div class="dashboard-card voting-election-card">
                     <div class="card-header">
-                        <h2 style="color: #1a1a1a;">Open Voting Events</h2>
+                        <h2>Open Voting Events</h2>
                     </div>
                     <div class="card-content">
                         <ul class="event-list" style="list-style:none; padding:0; margin:0;">
@@ -102,10 +94,10 @@
                                     <h3><?= esc($event['title']) ?></h3>
                                     <p>Status: <strong><?= esc(ucfirst($event['status'])) ?></strong></p>
                                     <?php if (! empty($event['start_time'])): ?>
-                                        <p>Start: <?= esc($event['start_time']) ?></p>
+                                        <p>Start: <?= esc(date('M d, Y h:i A', strtotime($event['start_time']))) ?></p>
                                     <?php endif; ?>
                                     <?php if (! empty($event['end_time'])): ?>
-                                        <p>End: <?= esc($event['end_time']) ?></p>
+                                        <p>End: <?= esc(date('M d, Y h:i A', strtotime($event['end_time']))) ?></p>
                                     <?php endif; ?>
                                     <a href="<?= base_url('voting/' . $event['id']) ?>" class="btn btn-admin">Vote Now</a>
                                 </li>
@@ -118,17 +110,17 @@
             <div style="margin-bottom: 1rem;">
                 <a href="<?= base_url('voting') ?>" class="btn btn-secondary">Back to event list</a>
             </div>
-            <div class="dashboard-card">
+            <div class="dashboard-card voting-election-card">
                 <div class="card-header">
                     <h2><?= htmlspecialchars($selectedElection['title']) ?></h2>
                 </div>
                 <div class="card-content">
                     <p>Status: <strong><?= esc(ucfirst($selectedElection['status'])) ?></strong></p>
                     <?php if (! empty($selectedElection['start_time'])): ?>
-                        <p>Start: <?= esc($selectedElection['start_time']) ?></p>
+                        <p>Start: <?= esc(date('M d, Y h:i A', strtotime($selectedElection['start_time']))) ?></p>
                     <?php endif; ?>
                     <?php if (! empty($selectedElection['end_time'])): ?>
-                        <p>End: <?= esc($selectedElection['end_time']) ?></p>
+                        <p>End: <?= esc(date('M d, Y h:i A', strtotime($selectedElection['end_time']))) ?></p>
                     <?php endif; ?>
 
                     <?php if ($hasVoted): ?>
@@ -144,6 +136,7 @@
                             <?php if (empty($receipt)): ?>
                                 <p>No receipt data is available.</p>
                             <?php else: ?>
+                                <div class="table-responsive">
                                 <table class="table" style="width:100%; border-collapse: collapse;">
                                     <thead>
                                         <tr>
@@ -159,11 +152,12 @@
                                                 <td style="border-bottom:1px solid #eee; padding:8px;"><?= esc($row['position']) ?></td>
                                                 <td style="border-bottom:1px solid #eee; padding:8px;"><?= esc($row['candidate']) ?></td>
                                                 <td style="border-bottom:1px solid #eee; padding:8px;"><?= esc($row['party']) ?></td>
-                                                <td style="border-bottom:1px solid #eee; padding:8px;"><?= esc($row['created_at']) ?></td>
+                                                <td style="border-bottom:1px solid #eee; padding:8px;"><?= esc(date('M d, Y h:i:s A', strtotime($row['created_at']))) ?></td>
                                             </tr>
                                         <?php endforeach; ?>
                                     </tbody>
                                 </table>
+                                </div>
                             <?php endif; ?>
                             </div>
                         <?php endif; ?>
@@ -175,6 +169,7 @@
                             <?php if (empty($results)): ?>
                                 <p>No votes have been cast yet for this election.</p>
                             <?php else: ?>
+                                <div class="table-responsive">
                                 <table class="table" style="width:100%; border-collapse: collapse;">
                                     <thead>
                                         <tr>
@@ -193,6 +188,7 @@
                                         <?php endforeach; ?>
                                     </tbody>
                                 </table>
+                                </div>
                                 <div class="chart-container">
                                     <canvas id="resultsChart"></canvas>
                                 </div>
@@ -264,7 +260,10 @@
                                     }
                                     fetch('<?= base_url('voting/deactivate-after-vote') ?>', {
                                         method: 'POST',
-                                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                        headers: {
+                                            'Content-Type': 'application/x-www-form-urlencoded',
+                                            'X-CSRF-TOKEN': document.querySelector('#voteForm input[name="<?= csrf_token() ?>"]')?.value || '<?= csrf_hash() ?>'
+                                        },
                                         credentials: 'same-origin',
                                         body: 'election_id=<?= (int)$selectedElection['id'] ?>'
                                     }).finally(function () {
@@ -276,36 +275,53 @@
                     <?php endif; ?>
 
                     <?php if (! $hasVoted): ?>
-                        <?php if (empty($candidates)): ?>
+                        <?php if (empty($candidates) && empty($positions)): ?>
                             <div class="alert alert-warning">This voting event has no candidates assigned yet.</div>
                         <?php else: ?>
                             <form action="<?= base_url('voting/cast') ?>" method="POST" id="voteForm">
+                                <?= csrf_field() ?>
                                 <input type="hidden" name="election_id" value="<?= esc($selectedElection['id']) ?>">
 
                                 <?php
-                                $current_pos = '';
+                                $current_position_id = null;
                                 $position_id = 0;
                                 $position_data = [];
+                                $position_titles = [];
+                                $rendered_positions = [];
+                                foreach ($positions as $position) {
+                                    $position_data[$position['id']] = (int) ($position['votes_required'] ?? 1);
+                                    $position_titles[$position['id']] = $position['title'];
+                                }
                                 foreach ($candidates as $c):
                                     $votes_required = $c['votes_required'] ?? 1;
                                     
-                                    if ($current_pos != $c['position_title']):
-                                        $current_pos = $c['position_title'];
+                                    if ($current_position_id != $c['position_id']):
+                                        if ($current_position_id !== null) {
+                                            echo '</div></section>';
+                                        }
+                                        $current_position_id = $c['position_id'];
                                         $position_id = $c['position_id'];
+                                        $rendered_positions[$position_id] = true;
+                                        echo '<section class="ballot-position">';
                                         $position_data[$position_id] = $votes_required;
-                                        echo '<h3 class="position-title">' . htmlspecialchars($current_pos);
+                                        echo '<h3 class="position-title">' . htmlspecialchars(
+                                            $position_titles[$position_id] ?? $c['position_title'] ?? 'Position',
+                                            ENT_QUOTES,
+                                            'UTF-8'
+                                        );
                                         if ($votes_required > 1) {
                                             echo ' <span style="font-size:0.8em; color:#666;">(Select ' . $votes_required . ' candidates)</span>';
                                         }
                                         echo '</h3>';
                                         echo '<div class="position-selection-info" data-position-id="' . $position_id . '" data-votes-required="' . $votes_required . '" style="margin-bottom:0.5rem; font-size:0.9rem;"></div>';
+                                        echo '<div class="candidate-grid">';
                                     endif;
                                 ?>
                                     <div class="candidate-card">
                                         <?php if ($votes_required > 1): ?>
                                             <input type="checkbox" id="candidate-<?= esc($c['id']) ?>" name="votes[<?= esc($c['position_id']) ?>][]" value="<?= esc($c['id']) ?>" data-position-id="<?= esc($c['position_id']) ?>" class="vote-checkbox">
                                         <?php else: ?>
-                                            <input type="radio" id="candidate-<?= esc($c['id']) ?>" name="votes[<?= esc($c['position_id']) ?>]" value="<?= esc($c['id']) ?>" required>
+                                            <input type="radio" id="candidate-<?= esc($c['id']) ?>" name="votes[<?= esc($c['position_id']) ?>]" value="<?= esc($c['id']) ?>" data-position-id="<?= esc($c['position_id']) ?>" <?= (int) $votes_required > 0 ? 'required' : '' ?>>
                                         <?php endif; ?>
                                         <label for="candidate-<?= esc($c['id']) ?>" class="candidate-label">
                                             <div class="candidate-photo">
@@ -323,12 +339,61 @@
                                         </label>
                                     </div>
                                 <?php endforeach; ?>
+                                <?php if ($current_position_id !== null): ?>
+                                    </div></section>
+                                <?php endif; ?>
+                                <?php foreach ($positions as $position): ?>
+                                    <?php if (! isset($rendered_positions[$position['id']])): ?>
+                                        <section class="ballot-position">
+                                            <h3 class="position-title"><?= esc($position['title']) ?></h3>
+                                            <div class="position-selection-info" data-position-id="<?= esc($position['id']) ?>" data-votes-required="<?= esc($position['votes_required'] ?? 1) ?>" style="margin-bottom:0.5rem; font-size:0.9rem;"></div>
+                                            <p>No candidates are eligible for you for this position.</p>
+                                        </section>
+                                    <?php endif; ?>
+                                <?php endforeach; ?>
 
-                                <button type="submit" class="btn btn-vote-submit">Submit My Vote</button>
+                                <button type="submit" class="btn btn-vote-submit">Review My Vote</button>
                             </form>
+
+                            <div id="vote-confirmation" class="vote-confirmation" role="dialog" aria-modal="true" aria-labelledby="vote-confirmation-title" aria-describedby="vote-confirmation-description" hidden>
+                                <div class="vote-confirmation__panel">
+                                    <div class="vote-confirmation__icon" aria-hidden="true">
+                                        <svg viewBox="0 0 24 24" fill="none">
+                                            <path d="M12 3.5 21 20H3L12 3.5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                                            <path d="M12 9v4.5M12 17h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                        </svg>
+                                    </div>
+                                    <p class="vote-confirmation__eyebrow">Final review</p>
+                                    <h2 id="vote-confirmation-title">Confirm your ballot</h2>
+                                    <p id="vote-confirmation-description" class="vote-confirmation__description">Take a moment to check each selection. Once submitted, your ballot cannot be changed.</p>
+                                    <ul id="vote-confirmation-summary" class="vote-confirmation__summary"></ul>
+                                    <div class="vote-confirmation__actions">
+                                        <button type="button" id="vote-back-to-edit" class="btn btn-secondary">Back to edit</button>
+                                        <button type="button" id="vote-confirm-submit" class="btn btn-primary">
+                                            <span>Confirm and submit</span>
+                                            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                                                <path d="M4 10h11m-4-4 4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
 
                             <script>
                                 const positionData = <?php echo json_encode($position_data); ?>;
+                                const positionTitles = <?php echo json_encode($position_titles); ?>;
+                                const confirmation = document.getElementById('vote-confirmation');
+                                const confirmationSummary = document.getElementById('vote-confirmation-summary');
+                                let confirmationTrigger = null;
+                                let ballotConfirmed = false;
+
+                                function closeVoteConfirmation() {
+                                    confirmation.hidden = true;
+                                    if (confirmationTrigger) {
+                                        confirmationTrigger.focus();
+                                        confirmationTrigger = null;
+                                    }
+                                }
 
                                 // Track selections per position
                                 const selections = {};
@@ -337,8 +402,8 @@
                                  function isFormValid() {
                                      for (const posId in positionData) {
                                          const required = parseInt(positionData[posId], 10);
-                                         const current = selections[posId];
-                                         if (current !== required) {
+                                         const current = selections[posId] || 0;
+                                         if (required === 0 ? current > 1 : current !== required) {
                                              return false;
                                          }
                                      }
@@ -452,10 +517,9 @@
                                     for (const posId in positionData) {
                                         const required = parseInt(positionData[posId], 10);
                                         const current = selections[posId];
-                                        if (current !== required) {
+                                        if (required === 0 ? (current || 0) > 1 : current !== required) {
                                             valid = false;
-                                            const posTitle = document.querySelector('.position-selection-info[data-position-id="' + posId + '"]').previousElementSibling.textContent.trim().split(' (')[0];
-                                            errorMessage += 'Please select exactly ' + required + ' candidates for "' + posTitle + '" (current: ' + current + ')\n';
+                                            errorMessage += 'Please select exactly ' + required + ' candidates for "' + positionTitles[posId] + '" (current: ' + (current || 0) + ')\n';
                                         }
                                     }
 
@@ -463,6 +527,62 @@
                                         e.preventDefault();
                                         alert(errorMessage);
                                         return false;
+                                    }
+                                    if (ballotConfirmed) {
+                                        return;
+                                    }
+                                    e.preventDefault();
+                                    confirmationSummary.replaceChildren();
+                                    Object.keys(positionData).forEach(function(posId) {
+                                        const selected = document.querySelectorAll('.candidate-card input[data-position-id="' + posId + '"]:checked');
+                                        const names = Array.from(selected, input => input.closest('.candidate-card').querySelector('.candidate-name').textContent.trim());
+                                        const item = document.createElement('li');
+                                        const position = document.createElement('span');
+                                        position.className = 'vote-confirmation__position';
+                                        position.textContent = positionTitles[posId];
+                                        const choice = document.createElement('span');
+                                        choice.className = 'vote-confirmation__choice';
+                                        choice.textContent = names.length ? names.join(', ') : 'No selection';
+                                        item.append(position, choice);
+                                        confirmationSummary.appendChild(item);
+                                    });
+                                    confirmationTrigger = document.activeElement;
+                                    confirmation.hidden = false;
+                                    document.getElementById('vote-back-to-edit').focus();
+                                });
+
+                                document.getElementById('vote-back-to-edit').addEventListener('click', function() {
+                                    closeVoteConfirmation();
+                                });
+                                document.getElementById('vote-confirm-submit').addEventListener('click', function() {
+                                    ballotConfirmed = true;
+                                    confirmation.hidden = true;
+                                    document.getElementById('voteForm').requestSubmit();
+                                });
+                                confirmation.addEventListener('click', function(event) {
+                                    if (event.target === confirmation) {
+                                        closeVoteConfirmation();
+                                    }
+                                });
+                                document.addEventListener('keydown', function(event) {
+                                    if (confirmation.hidden) {
+                                        return;
+                                    }
+                                    if (event.key === 'Escape') {
+                                        closeVoteConfirmation();
+                                        return;
+                                    }
+                                    if (event.key === 'Tab') {
+                                        const focusable = confirmation.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+                                        const first = focusable[0];
+                                        const last = focusable[focusable.length - 1];
+                                        if (event.shiftKey && document.activeElement === first) {
+                                            event.preventDefault();
+                                            last.focus();
+                                        } else if (!event.shiftKey && document.activeElement === last) {
+                                            event.preventDefault();
+                                            first.focus();
+                                        }
                                     }
                                 });
                             </script>
@@ -480,6 +600,7 @@
         let campusLatitude = <?= json_encode((float)($campus_latitude ?? 0)) ?>;
         let campusLongitude = <?= json_encode((float)($campus_longitude ?? 0)) ?>;
         let campusRadius = <?= json_encode((float)($campus_radius ?? 0)) ?>;
+        let campusLocationRequired = <?= json_encode($campus_location_required ?? false) ?>;
         let locationCheckInProgress = false;
         let lastLocationCheckTime = 0;
 
@@ -524,7 +645,7 @@
             if (locationCheckInProgress) return;
             
             // Only check if campus settings are configured
-            if (!campusRadius || campusRadius === 0 || !campusLatitude || !campusLongitude) {
+            if (!campusLocationRequired) {
                 console.log('Campus settings not configured, skipping location check');
                 return;
             }
@@ -547,6 +668,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRF-TOKEN': document.querySelector('#voteForm input[name="<?= csrf_token() ?>"]')?.value || '<?= csrf_hash() ?>',
                     },
                     body: 'latitude=' + currentLatitude + '&longitude=' + currentLongitude
                 })
@@ -613,6 +735,27 @@
             const voteForm = document.getElementById('voteForm');
             if (voteForm) {
                 voteForm.addEventListener('submit', function(e) {
+                    if (campusLocationRequired && (currentLatitude === null || currentLongitude === null)) {
+                        e.preventDefault();
+                        if (!navigator.geolocation) {
+                            alert('Campus location is required to submit your ballot, but this browser cannot provide it.');
+                            return;
+                        }
+
+                        navigator.geolocation.getCurrentPosition(function(position) {
+                            currentLatitude = position.coords.latitude;
+                            currentLongitude = position.coords.longitude;
+                            addLocationToForm(voteForm);
+                            if (voteForm.reportValidity()) voteForm.submit();
+                        }, function() {
+                            alert('Campus location is required to submit your ballot. Enable location access and try again.');
+                        }, {
+                            enableHighAccuracy: true,
+                            timeout: 8000,
+                            maximumAge: 0
+                        });
+                        return;
+                    }
                     addLocationToForm(voteForm);
                 });
             }

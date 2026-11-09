@@ -34,14 +34,18 @@
                             'course' => $filters['course'] ?? '',
                             'year_level' => $filters['year_level'] ?? '',
                             'section' => $filters['section'] ?? '',
-                            'school_year' => $filters['school_year'] ?? ''
+                            'school_year' => $filters['school_year'] ?? '',
+                            'vote_status' => $filters['vote_status'] ?? ''
                         ];
                         // Filter out empty strings but keep election_id
                         $cleanParams = array_filter($printParams, function($value, $key) {
                             return $key === 'election_id' || $key === 'date' || !empty($value);
                         }, ARRAY_FILTER_USE_BOTH);
                         echo base_url('admin/attendance/print?' . http_build_query($cleanParams));
-                    ?>" class="btn btn-secondary" target="_blank">Print Report</a>
+                    ?>" class="btn btn-secondary" style="background: #FCD34D; color: #000000 !important; border-color: #FBBF24;" target="_blank">
+                        <i class="bi bi-printer" aria-hidden="true" style="color: #000000 !important; margin-right: 0.4rem;"></i>
+                        <span style="color: #000000 !important;">Print Report</span>
+                    </a>
                 </div>
             </header>
 
@@ -63,6 +67,15 @@
                                                 </option>
                                             <?php endforeach; ?>
                                         <?php endif; ?>
+                                    </select>
+                                </div>
+
+                                <div class="filter-group">
+                                    <label for="filter_vote_status">Voting Status:</label>
+                                    <select name="vote_status" id="filter_vote_status" class="filter-input">
+                                        <option value="">All Statuses</option>
+                                        <option value="VOTED" <?= $filters['vote_status'] === 'VOTED' ? 'selected' : '' ?>>Voted</option>
+                                        <option value="ABSENT" <?= $filters['vote_status'] === 'ABSENT' ? 'selected' : '' ?>>Absent</option>
                                     </select>
                                 </div>
 
@@ -138,7 +151,7 @@
 
                                 <div class="filter-actions">
                                     <button type="submit" class="btn btn-primary btn-sm">Filter</button>
-                                    <a href="<?= base_url('admin/attendance') ?>" class="btn btn-secondary btn-sm">Reset</a>
+                                    <a href="<?= base_url('admin/attendance') ?>" class="btn btn-secondary btn-sm attendance-reset-btn">Reset</a>
                                 </div>
                             </div>
                         </form>
@@ -147,7 +160,7 @@
                             <?php if (!empty($group_by_election) && !empty($attendance)): ?>
                                 <!-- Display grouped by election -->
                                 <?php foreach ($attendance as $election_title => $records): ?>
-                                    <h4><?= esc($election_title) ?></h4>
+                                    <h4 class="attendance-election-title"><?= esc($election_title) ?></h4>
                                     <table class="table table-striped">
                                         <thead>
                                             <tr>

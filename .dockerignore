@@ -1,0 +1,13 @@
+.git
+.github
+tests
+phpunit.xml.dist
+.phpunit.result.cache
+*.log
+writable/logs/*
+!writable/logs/index.html
+writable/debugbar/*
+!writable/debugbar/index.html
+writable/cache/*
+!writable/cache/index.html
+

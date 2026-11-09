@@ -4,8 +4,11 @@ function formatTimestamp(timestamp) {
     const now = new Date();
     const diff = Math.floor((now - date) / 1000);
 
+    if (Number.isNaN(date.getTime())) {
+        return 'Time unavailable';
+    }
     if (diff < 60) {
-        return `${diff} seconds ago`;
+        return diff < 0 ? 'Just now' : `${diff} seconds ago`;
     }
     if (diff < 3600) {
         return `${Math.floor(diff / 60)} minutes ago`;
@@ -30,7 +33,11 @@ function renderActivityItems(items) {
         const li = document.createElement('li');
         li.style.padding = '0.75rem 0';
         li.style.borderBottom = '1px solid rgba(229,231,235,0.6)';
-        li.innerHTML = `<strong>${item.description}</strong><br><small>${formatTimestamp(item.created_at)}</small>`;
+        const description = document.createElement('strong');
+        description.textContent = item.description || 'Activity details unavailable';
+        const time = document.createElement('small');
+        time.textContent = formatTimestamp(item.created_at);
+        li.append(description, document.createElement('br'), time);
         list.appendChild(li);
     });
 }
@@ -49,7 +56,12 @@ function renderSystemStatus(status) {
         const li = document.createElement('li');
         li.style.padding = '0.75rem 0';
         li.style.borderBottom = '1px solid rgba(229,231,235,0.6)';
-        li.innerHTML = `<strong>${item.label}:</strong> ${item.value} <br><small>${item.detail}</small>`;
+        const label = document.createElement('strong');
+        label.textContent = `${item.label}: `;
+        const value = document.createTextNode(item.value);
+        const detail = document.createElement('small');
+        detail.textContent = item.detail;
+        li.append(label, value, document.createElement('br'), detail);
         list.appendChild(li);
     });
 }
@@ -60,20 +72,106 @@ function updateDashboard(data) {
     const candidateCount = document.getElementById('candidate-count');
     const electionStatus = document.getElementById('election-status');
     const progressBar = document.getElementById('vote-progress-bar');
+    const progressLabel = document.getElementById('vote-progress-label');
+    const progressTrack = progressBar ? progressBar.parentElement : null;
     const progressText = document.getElementById('vote-progress-text');
+    const error = document.getElementById('dashboard-error');
 
     if (studentCount) studentCount.textContent = data.students;
     if (voteCount) voteCount.textContent = data.votes;
     if (candidateCount) candidateCount.textContent = data.candidates;
     if (electionStatus) electionStatus.textContent = data.election_status;
     if (progressBar) {
-        const width = data.vote_progress || 0;
+        const width = Number.isFinite(Number(data.vote_progress)) ? Math.max(0, Math.min(100, Number(data.vote_progress))) : 0;
         progressBar.style.width = `${width}%`;
-        progressBar.textContent = `${width}%`;
+        if (progressLabel) progressLabel.textContent = `${width}%`;
+        if (progressTrack) progressTrack.setAttribute('aria-valuenow', String(width));
     }
-    if (progressText) progressText.textContent = `${data.votes}/${data.students || 0} votes cast`;
+    if (progressText) {
+        const election = data.election_title ? ` in ${data.election_title}` : '';
+        progressText.textContent = `${data.voters}/${data.eligible_voters} eligible voters participated${election}`;
+    }
+    renderDashboardElections(data.elections_overview || []);
+    if (error) {
+        error.hidden = true;
+        error.textContent = '';
+    }
     renderActivityItems(data.activities);
     renderSystemStatus(data.system_status);
+}
+
+function renderDashboardElections(elections) {
+    const container = document.getElementById('dashboard-election-overview');
+    if (!container) return;
+
+    container.replaceChildren();
+    if (!Array.isArray(elections) || elections.length === 0) {
+        const empty = document.createElement('p');
+        empty.textContent = 'No elections are available.';
+        container.appendChild(empty);
+        return;
+    }
+
+    elections.forEach(election => {
+        const status = String(election.status || '').toLowerCase();
+        const displayStatus = ['closed', 'completed'].includes(status) ? 'closed' : status;
+        const section = document.createElement('section');
+        section.style.marginBottom = '1rem';
+        section.style.paddingBottom = '1rem';
+        section.style.borderBottom = '1px solid rgba(229,231,235,0.2)';
+
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'flex-start';
+        header.style.gap = '0.75rem';
+        header.style.marginBottom = '0.5rem';
+
+        const title = document.createElement('h4');
+        title.style.margin = '0';
+        title.textContent = election.title || 'Untitled election';
+        const badge = document.createElement('span');
+        badge.className = `status-pill ${['open', 'pending', 'closed'].includes(displayStatus) ? `status-${displayStatus}` : ''}`;
+        badge.textContent = displayStatus ? displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1) : 'Unknown';
+        header.append(title, badge);
+        section.appendChild(header);
+
+        if (status === 'open') {
+            const voters = Number(election.voters) || 0;
+            const eligible = Number(election.eligible_voters) || 0;
+            const turnout = Number(election.turnout_rate) || 0;
+            const boundedTurnout = Math.max(0, Math.min(100, turnout));
+            const details = document.createElement('p');
+            details.style.marginBottom = '0.5rem';
+            details.textContent = `${voters.toLocaleString()} votes cast of ${eligible.toLocaleString()} eligible voters — ${turnout.toFixed(2)}% turnout`;
+            section.appendChild(details);
+
+            const progress = document.createElement('div');
+            progress.className = 'dashboard-vote-progress';
+            progress.setAttribute('role', 'progressbar');
+            progress.setAttribute('aria-label', `${title.textContent} voter turnout`);
+            progress.setAttribute('aria-valuemin', '0');
+            progress.setAttribute('aria-valuemax', '100');
+            progress.setAttribute('aria-valuenow', String(boundedTurnout));
+            const fill = document.createElement('div');
+            fill.className = 'dashboard-vote-progress-fill';
+            fill.style.width = `${boundedTurnout}%`;
+            const label = document.createElement('span');
+            label.className = 'dashboard-vote-progress-label';
+            label.textContent = `${turnout.toFixed(2)}%`;
+            progress.append(fill, label);
+            section.appendChild(progress);
+        } else {
+            const details = document.createElement('p');
+            details.style.margin = '0';
+            details.textContent = status === 'pending'
+                ? 'Upcoming — voting has not opened.'
+                : (['closed', 'completed'].includes(status) ? 'Closed.' : `${badge.textContent}.`);
+            section.appendChild(details);
+        }
+
+        container.appendChild(section);
+    });
 }
 
 function fetchDashboardStats(isManual = false) {
@@ -105,8 +203,11 @@ function fetchDashboardStats(isManual = false) {
     })
     .catch(error => {
         console.warn('Dashboard stats error:', error);
-        renderActivityItems([]);
-        renderSystemStatus(null);
+        const errorMessage = document.getElementById('dashboard-error');
+        if (errorMessage) {
+            errorMessage.textContent = 'Dashboard data could not be refreshed. Please try again.';
+            errorMessage.hidden = false;
+        }
     })
     .finally(() => {
         if (btn) {
@@ -199,7 +300,9 @@ document.addEventListener('DOMContentLoaded', function() {
     anchorLinks.forEach(link => {
         link.addEventListener('click', function(e) {
             e.preventDefault();
-            const target = document.querySelector(this.getAttribute('href'));
+            const selector = this.getAttribute('href');
+            if (!selector || selector === '#') return;
+            const target = document.querySelector(selector);
             if (target) {
                 target.scrollIntoView({
                     behavior: 'smooth',

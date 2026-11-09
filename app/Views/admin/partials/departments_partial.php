@@ -10,7 +10,6 @@
         <table class="student-table" id="departmentsTable">
             <thead>
                 <tr>
-                    <th>Code</th>
                     <th>Name</th>
                     <th>Courses</th>
                     <th>Status</th>
@@ -27,10 +26,6 @@
 <div id="deptModal" class="modal" style="display:none;">
     <div class="modal-content card register-modal" style="max-width:680px;padding:20px;">
         <h3 id="deptModalTitle">Add Department</h3>
-        <div style="margin-top:12px;">
-            <label>Department Code *</label>
-            <input id="dept_code" class="form-control" />
-        </div>
         <div style="margin-top:12px;">
             <label>Department Name *</label>
             <input id="dept_name" class="form-control" />
@@ -53,11 +48,10 @@ async function refreshDepartments() {
     const tbody = document.getElementById('departmentsBody');
     tbody.innerHTML = deps.map(d => `
         <tr>
-            <td>${d.department_code}</td>
             <td>${d.department_name}</td>
             <td>—</td>
             <td>${d.status}</td>
-            <td>${d.created_at ? d.created_at : ''}</td>
+            <td>${d.created_at ? new Date(String(d.created_at).replace(' ', 'T')).toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : ''}</td>
             <td><button class="btn btn-secondary" data-id="${d.id}" data-action="edit">Edit</button> <button class="btn btn-danger" data-id="${d.id}" data-action="delete">Delete</button></td>
         </tr>
     `).join('');
@@ -71,13 +65,13 @@ document.addEventListener('DOMContentLoaded', function(){
     let editingId = null;
 
     addBtn.addEventListener('click', function(){
-        editingId = null; document.getElementById('dept_code').value = ''; document.getElementById('dept_name').value = ''; document.getElementById('dept_status').value = 'Active'; modal.style.display='block'; document.getElementById('deptModalTitle').innerText='Add Department';
+        editingId = null; document.getElementById('dept_name').value = ''; document.getElementById('dept_status').value = 'Active'; modal.style.display='block'; document.getElementById('deptModalTitle').innerText='Add Department';
     });
     cancel.addEventListener('click', function(){ modal.style.display='none'; });
     save.addEventListener('click', async function(){
-        const payload = { department_code: document.getElementById('dept_code').value, department_name: document.getElementById('dept_name').value, status: document.getElementById('dept_status').value };
+        const payload = { department_name: document.getElementById('dept_name').value, status: document.getElementById('dept_status').value };
         const url = editingId ? '<?= base_url('admin/departments/update') ?>/'+editingId : '<?= base_url('admin/departments/store') ?>';
-        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)});
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content }, body: JSON.stringify(payload)});
         const data = await res.json();
         if (data.success) { modal.style.display='none'; refreshDepartments(); loadDepartments && loadDepartments(); }
         else alert('Error: '+(data.message || JSON.stringify(data.errors)));
@@ -87,11 +81,11 @@ document.addEventListener('DOMContentLoaded', function(){
         const btn = e.target.closest('button'); if (!btn) return; const id = btn.dataset.id; const action = btn.dataset.action;
         if (action === 'edit') {
             const res = await fetch('<?= base_url('admin/departments') ?>/'+id);
-            const d = await res.json(); editingId = id; document.getElementById('dept_code').value = d.department_code; document.getElementById('dept_name').value = d.department_name; document.getElementById('dept_status').value = d.status; document.getElementById('deptModalTitle').innerText='Edit Department'; modal.style.display='block';
+            const d = await res.json(); editingId = id; document.getElementById('dept_name').value = d.department_name; document.getElementById('dept_status').value = d.status; document.getElementById('deptModalTitle').innerText='Edit Department'; modal.style.display='block';
         }
         if (action === 'delete') {
             if (!confirm('Are you sure you want to delete this department?')) return;
-            const res = await fetch('<?= base_url('admin/departments/delete') ?>/'+id, { method: 'POST' }); const data = await res.json(); if (!data.success) alert(data.message || 'Failed to delete'); else refreshDepartments();
+            const res = await fetch('<?= base_url('admin/departments/delete') ?>/'+id, { method: 'POST', headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content } }); const data = await res.json(); if (!data.success) alert(data.message || 'Failed to delete'); else refreshDepartments();
         }
     });
 

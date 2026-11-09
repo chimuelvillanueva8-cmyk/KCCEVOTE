@@ -26,17 +26,19 @@
 
     <ul class="burger-nav" role="list">
         <li class="burger-nav-item" role="listitem">
-            <a href="<?= base_url('admin') ?>" class="burger-nav-link<?= strpos($currentPath, 'admin') === 0 && !preg_match('#admin/(students|manage|attendance|admins|security|results|announcements|elections)$#', $currentPath) ? ' active' : '' ?>" role="menuitem" <?= strpos($currentPath, 'admin') === 0 && !preg_match('#admin/(students|manage|attendance|admins|security|results|announcements|elections)$#', $currentPath) ? 'aria-current="page"' : '' ?>>
+            <a href="<?= base_url('admin') ?>" class="burger-nav-link<?= strpos($currentPath, 'admin') === 0 && !preg_match('#admin/(students|manage|attendance|admins|security|results|announcements|elections|audit-logs)$#', $currentPath) ? ' active' : '' ?>" role="menuitem" <?= strpos($currentPath, 'admin') === 0 && !preg_match('#admin/(students|manage|attendance|admins|security|results|announcements|elections|audit-logs)$#', $currentPath) ? 'aria-current="page"' : '' ?>>
                 <span class="burger-nav-icon" aria-label="Dashboard icon">▣</span>
                 <span class="burger-nav-text">Dashboard</span>
             </a>
         </li>
-        <li class="burger-nav-item" role="listitem">
-            <a href="<?= base_url('admin/elections') ?>" class="burger-nav-link<?= strpos($currentPath, 'admin/elections') !== false ? ' active' : '' ?>" role="menuitem" <?= strpos($currentPath, 'admin/elections') !== false ? 'aria-current="page"' : '' ?>>
-                <span class="burger-nav-icon" aria-label="Elections icon">🗳</span>
-                <span class="burger-nav-text">Elections</span>
-            </a>
-        </li>
+        <?php if (session()->get('is_builtin_admin')): ?>
+            <li class="burger-nav-item" role="listitem">
+                <a href="<?= base_url('admin/elections') ?>" class="burger-nav-link<?= strpos($currentPath, 'admin/elections') !== false ? ' active' : '' ?>" role="menuitem" <?= strpos($currentPath, 'admin/elections') !== false ? 'aria-current="page"' : '' ?>>
+                    <span class="burger-nav-icon" aria-label="Elections icon">🗳</span>
+                    <span class="burger-nav-text">Elections</span>
+                </a>
+            </li>
+        <?php endif; ?>
         <li class="burger-nav-item" role="listitem">
             <a href="<?= base_url('admin/announcements') ?>" class="burger-nav-link<?= strpos($currentPath, 'admin/announcements') !== false ? ' active' : '' ?>" role="menuitem" <?= strpos($currentPath, 'admin/announcements') !== false ? 'aria-current="page"' : '' ?>>
                 <span class="burger-nav-icon" aria-label="Announcements icon">📢</span>
@@ -67,27 +69,37 @@
                 <span class="burger-nav-text">Administrators</span>
             </a>
         </li>
-        <li class="burger-nav-item burger-dropdown" role="listitem">
-            <button class="burger-nav-link burger-dropdown-toggle" type="button" aria-expanded="false" aria-controls="securitySubnav">
-                <span class="burger-nav-icon" aria-label="Security icon">🛡</span>
-                <span class="burger-nav-text">Security</span>
-                <span class="burger-nav-caret"><i class="bi bi-chevron-down"></i></span>
-            </button>
-            <ul class="burger-subnav" id="securitySubnav">
-                <li class="burger-subnav-item">
-                    <a href="<?= base_url('admin/security') ?>" class="burger-nav-link burger-subnav-link<?= strpos($currentPath, 'admin/security') !== false ? ' active' : '' ?>" role="menuitem" <?= strpos($currentPath, 'admin/security') !== false ? 'aria-current="page"' : '' ?>>
-                        <span class="burger-nav-icon" aria-label="Campus Range Settings icon">▣</span>
-                        <span class="burger-nav-text">Campus Range Settings</span>
-                    </a>
-                </li>
-            </ul>
-        </li>
+        <?php if (session()->get('is_builtin_admin')): ?>
+            <li class="burger-nav-item burger-dropdown" role="listitem">
+                <button class="burger-nav-link burger-dropdown-toggle" type="button" aria-expanded="false" aria-controls="securitySubnav">
+                    <span class="burger-nav-icon" aria-label="Security icon">🛡</span>
+                    <span class="burger-nav-text">Security</span>
+                    <span class="burger-nav-caret"><i class="bi bi-chevron-down"></i></span>
+                </button>
+                <ul class="burger-subnav" id="securitySubnav">
+                    <li class="burger-subnav-item">
+                        <a href="<?= base_url('admin/security') ?>" class="burger-nav-link burger-subnav-link<?= strpos($currentPath, 'admin/security') !== false ? ' active' : '' ?>" role="menuitem" <?= strpos($currentPath, 'admin/security') !== false ? 'aria-current="page"' : '' ?>>
+                            <span class="burger-nav-icon" aria-label="Campus Range Settings icon">▣</span>
+                            <span class="burger-nav-text">Campus Range Settings</span>
+                        </a>
+                    </li>
+                </ul>
+            </li>
+        <?php endif; ?>
         <li class="burger-nav-item" role="listitem">
             <a href="<?= base_url('admin/results') ?>" class="burger-nav-link<?= strpos($currentPath, 'admin/results') !== false ? ' active' : '' ?>" role="menuitem" <?= strpos($currentPath, 'admin/results') !== false ? 'aria-current="page"' : '' ?>>
                 <span class="burger-nav-icon" aria-label="Results icon">▥</span>
                 <span class="burger-nav-text">Results</span>
             </a>
         </li>
+        <?php if (session()->get('is_builtin_admin')): ?>
+            <li class="burger-nav-item" role="listitem">
+                <a href="<?= base_url('admin/audit-logs') ?>" class="burger-nav-link<?= strpos($currentPath, 'admin/audit-logs') !== false ? ' active' : '' ?>" role="menuitem" <?= strpos($currentPath, 'admin/audit-logs') !== false ? 'aria-current="page"' : '' ?>>
+                    <span class="burger-nav-icon" aria-label="Audit logs icon">▤</span>
+                    <span class="burger-nav-text">Audit Logs</span>
+                </a>
+            </li>
+        <?php endif; ?>
         <li class="burger-nav-item" role="listitem">
             <a href="<?= base_url('logout') ?>" class="burger-nav-link logout" role="menuitem">
                 <span class="burger-nav-icon" aria-label="Sign Out icon">↪</span>

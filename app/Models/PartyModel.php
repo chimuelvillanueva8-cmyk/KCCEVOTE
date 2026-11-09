@@ -23,7 +23,7 @@ class PartyModel extends Model
     ];
 
     protected $validationRules = [
-        'name'        => 'required|min_length[2]',
+        'name'        => 'required',
         'election_id' => 'permit_empty|is_natural_no_zero',
         'acronym'     => 'permit_empty|max_length[32]',
         'description' => 'permit_empty',
@@ -32,7 +32,7 @@ class PartyModel extends Model
     ];
 
     protected $validationMessages = [
-        'name' => ['required' => 'A party name is required.', 'min_length' => 'The party name must be at least 2 characters.'],
+        'name' => ['required' => 'A party name is required.'],
         'acronym' => ['max_length' => 'Acronym must be 32 characters or less.'],
         'status' => ['in_list' => 'Status must be active or inactive.'],
     ];
@@ -51,25 +51,44 @@ class PartyModel extends Model
 
     public function getByElection(int $electionId, bool $includeInactive = false)
     {
-        $builder = $this->groupStart()
-                              ->where('election_id', $electionId)
-                              ->orWhere('election_id IS NULL')
-                          ->groupEnd();
+        $db = \Config\Database::connect();
+        $hasPositionElectionId = $db->fieldExists('election_id', 'positions');
+        $candidateElectionCondition = $hasPositionElectionId
+            ? '(c.election_id = ' . $db->escape($electionId)
+                . ' OR (c.election_id IS NULL AND pos.election_id = ' . $db->escape($electionId) . '))'
+            : '(c.election_id = ' . $db->escape($electionId) . ')';
+        $builder = $db->table('parties p')
+            ->select('p.*')
+            ->groupStart()
+                ->where('p.election_id', $electionId)
+                ->orWhere(
+                    'EXISTS (
+                        SELECT 1
+                        FROM candidates c
+                        LEFT JOIN positions pos ON pos.id = c.position_id
+                        WHERE c.party_id = p.id AND ' . $candidateElectionCondition . '
+                    )',
+                    null,
+                    false
+                )
+            ->groupEnd();
         if (! $includeInactive) {
-            $builder->where('status', 'active');
+            $builder->where('p.status', 'active');
         }
-        return $builder->orderBy('name', 'ASC')
-                       ->findAll();
+        return $builder->orderBy('p.name', 'ASC')
+                       ->get()
+                       ->getResultArray();
     }
 
     public function findForElection(int $partyId, int $electionId)
     {
-        return $this->where('id', $partyId)
-                    ->groupStart()
-                        ->where('election_id', $electionId)
-                        ->orWhere('election_id IS NULL')
-                    ->groupEnd()
-                    ->first();
+        foreach ($this->getByElection($electionId, true) as $party) {
+            if ((int) $party['id'] === $partyId) {
+                return $party;
+            }
+        }
+
+        return null;
     }
 
     public function countByElection(int $electionId): int

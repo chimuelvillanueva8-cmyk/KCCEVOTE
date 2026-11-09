@@ -8,6 +8,10 @@ class TestStudentSeeder extends Seeder
 {
     public function run()
     {
+        if (ENVIRONMENT === 'production') {
+            throw new \RuntimeException('TestStudentSeeder may not be run in production.');
+        }
+
         $data = [
             'student_id' => 'STU002',
             'full_name' => 'Test Student',

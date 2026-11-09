@@ -8,7 +8,7 @@ class DepartmentModel extends Model
     protected $table = 'departments';
     protected $primaryKey = 'id';
     protected $useTimestamps = true;
-    protected $allowedFields = ['department_code', 'department_name', 'status', 'created_at', 'updated_at'];
+    protected $allowedFields = ['department_name', 'status', 'created_at', 'updated_at'];
 
     public function active()
     {

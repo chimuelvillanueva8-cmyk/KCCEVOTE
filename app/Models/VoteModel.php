@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Libraries\VotingRules;
 use CodeIgniter\Model;
 
 class VoteModel extends Model
@@ -9,7 +10,7 @@ class VoteModel extends Model
     protected $table      = 'votes';
     protected $primaryKey = 'id';
 
-    protected $allowedFields = ['student_id', 'candidate_id', 'position_id', 'election_id'];
+    protected $allowedFields = ['student_id', 'candidate_id', 'position_id', 'election_id', 'created_at'];
 
     public function hasVoted($student_id, $election_id)
     {
@@ -40,7 +41,10 @@ class VoteModel extends Model
         $votesByPosition = array_column($votes, 'vote_count', 'position_id');
 
         foreach ($positions as $position) {
-            if ((int)($votesByPosition[$position['id']] ?? 0) !== (int)$position['votes_required']) {
+            if (! VotingRules::hasValidSelectionCount(
+                (int) ($votesByPosition[$position['id']] ?? 0),
+                (int) $position['votes_required']
+            )) {
                 return false;
             }
         }
@@ -51,15 +55,58 @@ class VoteModel extends Model
     public function getResults($election_id)
     {
         $db = \Config\Database::connect();
+        $hasPositionElectionId = $db->fieldExists('election_id', 'positions');
         $builder = $db->table('candidates c');
-        $builder->select('c.full_name, pos.title as position, COALESCE(COUNT(v.id), 0) as vote_count, pos.sort_order');
+        $builder->select('c.id as candidate_id, c.position_id, c.full_name, c.photo, pos.title as position, COALESCE(COUNT(v.id), 0) as vote_count, pos.sort_order');
         $builder->join('positions pos', 'pos.id = c.position_id');
         $builder->join('votes v', 'v.candidate_id = c.id AND v.election_id = ' . $db->escape($election_id), 'left');
-        $builder->where('c.election_id', $election_id);
-        $builder->groupBy('c.id');
+        $builder->groupStart()
+            ->where('c.election_id', $election_id);
+        if ($hasPositionElectionId) {
+            $builder->orGroupStart()
+                ->where('c.election_id', null)
+                ->where('pos.election_id', $election_id)
+            ->groupEnd();
+        }
+        $builder->groupEnd();
+        $builder->groupStart()
+            ->where('c.status', 'active')
+            ->orWhere('v.id IS NOT NULL', null, false)
+        ->groupEnd();
+        $builder->groupBy(['c.id', 'c.position_id', 'c.full_name', 'c.photo', 'pos.title', 'pos.sort_order']);
         $builder->orderBy('pos.sort_order', 'ASC');
         $builder->orderBy('vote_count', 'DESC');
+        $builder->orderBy('c.id', 'ASC');
         return $builder->get()->getResultArray();
+    }
+
+    public function getLeaderboard($electionId): array
+    {
+        $leaderboard = [];
+        foreach ($this->getResults($electionId) as $candidate) {
+            $positionId = (int) $candidate['position_id'];
+            if (! isset($leaderboard[$positionId])) {
+                $leaderboard[$positionId] = [
+                    'title' => $candidate['position'],
+                    'candidates' => [],
+                    'highest_votes' => (int) $candidate['vote_count'],
+                    'leader_count' => 0,
+                ];
+            }
+
+            $candidate['vote_count'] = (int) $candidate['vote_count'];
+            $candidates = $leaderboard[$positionId]['candidates'];
+            $previous = empty($candidates) ? null : $candidates[count($candidates) - 1];
+            $candidate['rank'] = $previous && $previous['vote_count'] === $candidate['vote_count']
+                ? $previous['rank']
+                : count($candidates) + 1;
+            if ($candidate['vote_count'] === $leaderboard[$positionId]['highest_votes']) {
+                $leaderboard[$positionId]['leader_count']++;
+            }
+            $leaderboard[$positionId]['candidates'][] = $candidate;
+        }
+
+        return $leaderboard;
     }
 
     public function getReceipt($student_id, $election_id)
@@ -104,5 +151,22 @@ class VoteModel extends Model
         
         $query = $db->query($sql, [$date, $election_id]);
         return $query->getResultArray();
+    }
+
+    public function getVoteTimesByStudent($electionId): array
+    {
+        $rows = $this->db->table($this->table)
+            ->select('student_id, MIN(created_at) as vote_time')
+            ->where('election_id', $electionId)
+            ->groupBy('student_id')
+            ->get()
+            ->getResultArray();
+
+        $voteTimes = [];
+        foreach ($rows as $row) {
+            $voteTimes[(int) $row['student_id']] = $row['vote_time'];
+        }
+
+        return $voteTimes;
     }
 }

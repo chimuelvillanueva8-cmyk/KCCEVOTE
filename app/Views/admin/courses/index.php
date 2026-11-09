@@ -17,7 +17,6 @@
         <table class="student-table" id="coursesTable">
             <thead>
                 <tr>
-                    <th>Code</th>
                     <th>Name</th>
                     <th>Department</th>
                     <th>Status</th>
@@ -34,10 +33,6 @@
 <div id="courseModal" class="modal" style="display:none;">
     <div class="modal-content card register-modal" style="max-width:720px;padding:20px;">
         <h3 id="courseModalTitle">Add Course</h3>
-        <div style="margin-top:12px;">
-            <label>Course Code *</label>
-            <input id="course_code" class="form-control" />
-        </div>
         <div style="margin-top:12px;">
             <label>Course Name *</label>
             <input id="course_name" class="form-control" />
@@ -77,8 +72,8 @@ async function refreshCourses(departmentId) {
     const res = await fetch(url.replace(/\/$/, ''));
     const data = await res.json().catch(()=>[]);
     const tbody = document.getElementById('coursesBody');
-    if (!Array.isArray(data) || data.length === 0) { tbody.innerHTML = '<tr><td colspan="6">No courses</td></tr>'; return; }
-    tbody.innerHTML = data.map(c=>`<tr><td>${c.course_code}</td><td>${c.course_name}</td><td>${c.department_id}</td><td>${c.status}</td><td>${c.created_at||''}</td><td><button data-id="${c.id}" data-action="edit" class="btn btn-secondary">Edit</button> <button data-id="${c.id}" data-action="delete" class="btn btn-danger">Delete</button></td></tr>`).join('');
+    if (!Array.isArray(data) || data.length === 0) { tbody.innerHTML = '<tr><td colspan="5">No courses</td></tr>'; return; }
+    tbody.innerHTML = data.map(c=>`<tr><td>${c.course_name}</td><td>${c.department_name || c.department_id}</td><td>${c.status}</td><td>${c.created_at ? new Date(String(c.created_at).replace(' ', 'T')).toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : ''}</td><td><button data-id="${c.id}" data-action="edit" class="btn btn-secondary">Edit</button> <button data-id="${c.id}" data-action="delete" class="btn btn-danger">Delete</button></td></tr>`).join('');
 }
 
 document.addEventListener('DOMContentLoaded', function(){
@@ -92,22 +87,22 @@ document.addEventListener('DOMContentLoaded', function(){
     addBtn.addEventListener('click', async function(){
         const deps = await (await fetch('<?= base_url('admin/departments/list') ?>')).json();
         document.getElementById('course_department').innerHTML = deps.map(d=>`<option value="${d.id}">${d.department_code} - ${d.department_name}</option>`).join('');
-        editing = null; document.getElementById('course_code').value=''; document.getElementById('course_name').value=''; document.getElementById('course_status').value='Active'; modal.style.display='block';
+        editing = null; document.getElementById('course_name').value=''; document.getElementById('course_status').value='Active'; modal.style.display='block';
     });
     cancel.addEventListener('click', function(){ modal.style.display='none'; });
     save.addEventListener('click', async function(){
-        const payload = { course_code: document.getElementById('course_code').value, course_name: document.getElementById('course_name').value, department_id: document.getElementById('course_department').value, status: document.getElementById('course_status').value };
+        const payload = { course_name: document.getElementById('course_name').value, department_id: document.getElementById('course_department').value, status: document.getElementById('course_status').value };
         const url = editing ? '<?= base_url('admin/courses/update') ?>/'+editing : '<?= base_url('admin/courses/store') ?>';
-        const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)});
+        const res = await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json', 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content}, body: JSON.stringify(payload)});
         const data = await res.json(); if (data.success) { modal.style.display='none'; loadCoursePage(); } else alert('Error: '+JSON.stringify(data.errors||data.message));
     });
 
     document.getElementById('coursesBody').addEventListener('click', async function(e){
         const btn = e.target.closest('button'); if (!btn) return; const id = btn.dataset.id; const action = btn.dataset.action;
         if (action==='edit') {
-            const res = await fetch('<?= base_url('admin/courses') ?>/'+id); const c = await res.json(); editing = id; document.getElementById('course_code').value=c.course_code; document.getElementById('course_name').value=c.course_name; const deps = await (await fetch('<?= base_url('admin/departments/list') ?>')).json(); document.getElementById('course_department').innerHTML = deps.map(d=>`<option value="${d.id}" ${d.id==c.department_id? 'selected':''}>${d.department_code} - ${d.department_name}</option>`).join(''); document.getElementById('course_status').value=c.status; modal.style.display='block';
+            const res = await fetch('<?= base_url('admin/courses') ?>/'+id); const c = await res.json(); editing = id; document.getElementById('course_name').value=c.course_name; const deps = await (await fetch('<?= base_url('admin/departments/list') ?>')).json(); document.getElementById('course_department').innerHTML = deps.map(d=>`<option value="${d.id}" ${d.id==c.department_id? 'selected':''}>${d.department_code} - ${d.department_name}</option>`).join(''); document.getElementById('course_status').value=c.status; modal.style.display='block';
         }
-        if (action==='delete') { if (!confirm('Delete course?')) return; const res = await fetch('<?= base_url('admin/courses/delete') ?>/'+id, { method:'POST'}); const data = await res.json(); if (!data.success) alert('Failed to delete'); else loadCoursePage(); }
+        if (action==='delete') { if (!confirm('Delete course?')) return; const res = await fetch('<?= base_url('admin/courses/delete') ?>/'+id, { method:'POST', headers: {'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content} }); const data = await res.json(); if (!data.success) alert('Failed to delete'); else loadCoursePage(); }
     });
 });
 </script>

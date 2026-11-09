@@ -89,7 +89,7 @@ class Session extends BaseConfig
      * when auto-regenerating the session ID. When set to FALSE, the data
      * will be later deleted by the garbage collector.
      */
-    public bool $regenerateDestroy = false;
+    public bool $regenerateDestroy = true;
 
     /**
      * --------------------------------------------------------------------------
@@ -124,4 +124,15 @@ class Session extends BaseConfig
      * seconds.
      */
     public int $lockMaxRetries = 300;
+
+    public function __construct()
+    {
+        parent::__construct();
+
+        $this->driver = trim((string) env('session.driver', FileHandler::class), " \t\n\r\0\x0B'\"");
+        $this->savePath = trim(
+            (string) env('session.savePath', WRITEPATH . 'session' . DIRECTORY_SEPARATOR),
+            " \t\n\r\0\x0B'\""
+        );
+    }
 }

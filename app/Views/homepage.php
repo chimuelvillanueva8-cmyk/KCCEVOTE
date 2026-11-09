@@ -11,7 +11,8 @@
         body { font-family: Arial, Helvetica, sans-serif; margin:0; padding:0; }
         .hero { padding:48px; text-align:center; }
         .buttons { margin-top:24px; }
-        .btn { display:inline-block; padding:12px 20px; margin:0 8px; border-radius:6px; text-decoration:none; color:#fff }
+        .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; box-sizing:border-box; min-height:44px; padding:12px 20px; margin:0 8px; border-radius:6px; line-height:1.25; text-align:center; text-decoration:none; color:#fff }
+        .btn > i, .btn > svg { flex:0 0 auto; line-height:1; }
         .btn-login { background:#1e73be }
         .btn-results { background:#2ecc71 }
 

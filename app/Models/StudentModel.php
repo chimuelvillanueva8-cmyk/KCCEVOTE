@@ -96,7 +96,7 @@ class StudentModel extends Model
 
     public function verifyPassword($password, $storedPassword): bool
     {
-        if (empty($storedPassword)) {
+        if (! is_string($password) || ! is_string($storedPassword) || $storedPassword === '') {
             return false;
         }
 
@@ -104,7 +104,7 @@ class StudentModel extends Model
             return true;
         }
 
-        return is_string($storedPassword) && $storedPassword === $password;
+        return hash_equals($storedPassword, $password);
     }
 
     public function getDepartments()

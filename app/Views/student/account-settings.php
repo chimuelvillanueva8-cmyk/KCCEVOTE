@@ -9,9 +9,17 @@
     <link rel="stylesheet" href="<?= base_url('css/dashboard.css') ?>">
     <style>
         .settings-container {
-            max-width: 700px;
-            margin: 2rem auto;
-            padding: 0 1rem;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            z-index: 1050;
+            width: min(700px, calc(100vw - 2rem));
+            max-height: calc(100vh - 2rem);
+            overflow-y: auto;
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            transform: translate(-50%, -50%);
         }
         
         .settings-card {
@@ -77,10 +85,13 @@
         .settings-button-group a {
             flex: 1;
             min-width: 140px;
+            min-height: 46px;
+            box-sizing: border-box;
             padding: 0.9rem 1.5rem;
             border: none;
             border-radius: 6px;
             font-weight: 600;
+            line-height: 1.25;
             cursor: pointer;
             transition: all 0.3s ease;
             font-size: 1rem;
@@ -88,6 +99,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            gap: 0.5rem;
+            text-align: center;
         }
         
         .btn-update {
@@ -176,7 +189,7 @@
         /* Tablet responsiveness */
         @media (max-width: 768px) {
             .settings-container {
-                margin: 1.5rem auto;
+                margin: 0;
             }
             
             .settings-card {
@@ -197,8 +210,8 @@
         /* Mobile responsiveness */
         @media (max-width: 600px) {
             .settings-container {
-                margin: 1rem auto;
-                padding: 0 0.5rem;
+                width: calc(100vw - 1rem);
+                margin: 0;
             }
             
             .settings-card {
@@ -354,11 +367,22 @@
                     <div class="form-row">
                         <div class="settings-form-group">
                             <label>Department</label>
-                            <input type="text" value="<?= esc($student['department']) ?>" disabled>
+                            <input type="text" value="<?= esc($departmentName ?? $student['department'] ?? '') ?>" disabled>
                         </div>
                         <div class="settings-form-group">
                             <label>Course</label>
-                            <input type="text" value="<?= esc($student['course']) ?>" disabled>
+                            <input type="text" value="<?= esc($courseName ?? $student['course'] ?? '') ?>" disabled>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="settings-form-group">
+                            <label>Email</label>
+                            <input type="text" value="<?= esc($student['email'] ?? '') ?>" disabled>
+                        </div>
+                        <div class="settings-form-group">
+                            <label>Account Status</label>
+                            <input type="text" value="<?= esc($student['status'] ?? ((int) ($student['is_active'] ?? 0) === 1 ? 'Active' : 'Inactive')) ?>" disabled>
                         </div>
                     </div>
 
@@ -379,25 +403,6 @@
                     <div class="settings-form-group form-row-full">
                         <label for="school_year">Academic Year *</label>
                         <input type="text" id="school_year" name="school_year" placeholder="e.g., 2024-2025" value="<?= esc($student['school_year']) ?>" required>
-                    </div>
-
-                    <!-- Password Change -->
-                    <div class="section-title" style="margin-top: 2rem;">Change Password</div>
-
-                    <div class="settings-form-group form-row-full">
-                        <label for="current_password">Current Password</label>
-                        <input type="password" id="current_password" name="current_password" placeholder="Leave blank if not changing password">
-                    </div>
-
-                    <div class="form-row">
-                        <div class="settings-form-group">
-                            <label for="new_password">New Password</label>
-                            <input type="password" id="new_password" name="new_password" placeholder="Min 6 characters">
-                        </div>
-                        <div class="settings-form-group">
-                            <label for="confirm_password">Confirm Password</label>
-                            <input type="password" id="confirm_password" name="confirm_password" placeholder="Confirm new password">
-                        </div>
                     </div>
 
                     <div class="settings-button-group">

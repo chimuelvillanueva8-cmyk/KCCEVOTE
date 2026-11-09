@@ -59,6 +59,14 @@ class UserModel extends Model
         if ($user) {
             $studentModel = new StudentModel();
             if ($studentModel->verifyPassword($password, $user['password'])) {
+                $storedPassword = (string) $user['password'];
+                if (! password_verify($password, $storedPassword) || password_needs_rehash($storedPassword, PASSWORD_DEFAULT)) {
+                    $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+                    if ($passwordHash === false || ! $studentModel->update($user['id'], ['password' => $passwordHash])) {
+                        log_message('error', 'Unable to upgrade student password hash after authentication.');
+                        return false;
+                    }
+                }
                 return $user;
             }
         }
@@ -80,16 +88,31 @@ class UserModel extends Model
      */
     public function verifyAdmin($username, $password)
     {
-        $admin = $this->getAdmin($username);
-        if ($admin) {
-            if (password_verify($password, $admin['password'])) {
-                return $admin;
-            }
+        if (! is_string($username) || ! is_string($password) || $password === '') {
+            return false;
+        }
 
-            if (is_string($admin['password'] ?? null) && $admin['password'] === $password) {
-                return $admin;
+        $admin = $this->getAdmin($username);
+        $storedPassword = $admin['password'] ?? null;
+        if (! $admin || ! is_string($storedPassword) || $storedPassword === '') {
+            return false;
+        }
+
+        $validHash = password_verify($password, $storedPassword);
+        if (! $validHash && ! hash_equals($storedPassword, $password)) {
+            return false;
+        }
+
+        if (! $validHash || password_needs_rehash($storedPassword, PASSWORD_DEFAULT)) {
+            $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+            if ($passwordHash === false || ! \Config\Database::connect()->table('admins')
+                ->where('id', $admin['id'])
+                ->update(['password' => $passwordHash])) {
+                log_message('error', 'Unable to upgrade administrator password hash after authentication.');
+                return false;
             }
         }
-        return false;
+
+        return $admin;
     }
 }

@@ -75,4 +75,18 @@ class Paths
      * is used when no value is provided to `Services::renderer()`.
      */
     public string $viewDirectory = __DIR__ . '/../Views';
+
+    public function __construct()
+    {
+        // On serverless platforms like Vercel or AWS Lambda, the filesystem is read-only except /tmp
+        if (getenv('VERCEL') || getenv('AWS_LAMBDA_FUNCTION_NAME')) {
+            $tmpWritable = '/tmp/writable';
+            foreach (['cache', 'logs', 'session', 'debugbar', 'uploads'] as $dir) {
+                if (! is_dir($tmpWritable . '/' . $dir)) {
+                    @mkdir($tmpWritable . '/' . $dir, 0777, true);
+                }
+            }
+            $this->writableDirectory = $tmpWritable;
+        }
+    }
 }

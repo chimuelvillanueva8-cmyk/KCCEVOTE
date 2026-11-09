@@ -1,68 +1,47 @@
-# CodeIgniter 4 Application Starter
+# KEVS - KCC E-Voting System
 
-## What is CodeIgniter?
+KEVS is a CodeIgniter 4 application for student registration, election setup, candidate and voter management, attendance, and online voting.
 
-CodeIgniter is a PHP full-stack web framework that is light, fast, flexible and secure.
-More information can be found at the [official site](https://codeigniter.com).
+## Requirements
 
-This repository holds a composer-installable app starter.
-It has been built from the
-[development repository](https://github.com/codeigniter4/CodeIgniter4).
+- PHP 8.1 or later with `intl`, `mbstring`, `mysqli`, `curl`, `fileinfo`, `gd`, and the PhpSpreadsheet extensions `dom`, `simplexml`, `xml`, `xmlreader`, `xmlwriter`, `zip`, and `zlib` (plus standard PHP extensions such as `ctype`, `filter`, `iconv`, and `libxml`)
+- MySQL or MariaDB
+- Composer
+- Apache with `mod_rewrite` and `.htaccess` overrides enabled, or an equivalent web-server configuration
 
-More information about the plans for version 4 can be found in [CodeIgniter 4](https://forum.codeigniter.com/forumdisplay.php?fid=28) on the forums.
+## Local setup
 
-You can read the [user guide](https://codeigniter.com/user_guide/)
-corresponding to the latest version of the framework.
+1. Install dependencies with `composer install`.
+2. Copy `env` to `.env` and configure the database, session save path, and local base URL.
+3. Create the database schema using the deployment procedure documented for your database.
+4. Point the web server document root at `public/`; do not expose the repository root.
+5. Start the app with `php spark serve` for local development, or configure Apache to serve `public/`.
 
-## Installation & updates
+There are no default administrator or student login credentials. For a first administrator, generate a password hash on the server with `php -r 'echo password_hash(readline("Initial admin password: "), PASSWORD_DEFAULT), PHP_EOL;'`, then insert the username and generated hash into `admins` using a trusted database client. Do not store the plaintext password or reuse sample credentials.
 
-`composer create-project codeigniter4/appstarter` then `composer update` whenever
-there is a new release of the framework.
+`TestStudentSeeder` and `SampleElectionSeeder` contain development/demo data and refuse to run when `CI_ENVIRONMENT` is `production`.
 
-When updating, check the release notes to see if there are any changes you might need to apply
-to your `app` folder. The affected files can be copied or merged from
-`vendor/codeigniter4/framework/app`.
+## Production configuration
 
-## Setup
+Set `CI_ENVIRONMENT = production` and configure every production value in `.env` or the deployment environment. At minimum, set:
 
-Copy `env` to `.env` and tailor for your app, specifically the baseURL
-and any database settings.
+- `app.baseURL` to the public HTTPS URL
+- `database.default.hostname`, `database.default.database`, `database.default.username`, and `database.default.password` to a dedicated database account with only the permissions the app requires
+- `session.savePath` to an absolute, writable path outside the public document root
+- `AZURE_FACE_ENDPOINT` and `AZURE_FACE_KEY` if face verification is enabled
 
-## Important Change with index.php
+Production mode rejects a missing or non-HTTPS `app.baseURL`, forces HTTPS, disables database debug mode, uses secure session cookies, and applies CSRF and security-header filters. Keep `.env`, `writable/`, application source, and `vendor/` outside the web document root. Back up the database and private uploads, protect and rotate credentials, and test restore procedures before launch.
 
-`index.php` is no longer in the root of the project! It has been moved inside the *public* folder,
-for better security and separation of components.
+The uploaded student ID images and OCR temporary files are not public. The Apache rules under `public/uploads/` and `public/assets/uploads/` rely on `AllowOverride` being enabled; configure equivalent deny rules if using another server.
 
-This means that you should configure your web server to "point" to your project's *public* folder, and
-not to the project root. A better practice would be to configure a virtual host to point there. A poor practice would be to point your web server to the project root and expect to enter *public/...*, as the rest of your logic and the
-framework are exposed.
+## Tests and checks
 
-**Please** read the user guide for a better explanation of how CI4 works!
+Run `php spark routes` to check application boot and route registration, and `php vendor/bin/phpunit` to run the PHPUnit suite. Current unit tests cover face-descriptor validation and campus-location checks; they do not replace end-to-end tests for authentication, authorization, CSRF, uploads, election eligibility, or concurrent ballot submission before production use.
 
-## Repository Management
+Students with legacy image-only face enrollment must be re-enrolled by an administrator to use face login; password login remains available. Campus checks rely on browser-provided coordinates, which can be spoofed and should not be treated as a trusted anti-fraud control.
 
-We use GitHub issues, in our main repository, to track **BUGS** and to track approved **DEVELOPMENT** work packages.
-We use our [forum](http://forum.codeigniter.com) to provide SUPPORT and to discuss
-FEATURE REQUESTS.
+## Election-data limitation
 
-This repository is a "distribution" one, built by our release preparation script.
-Problems with it can be raised on our forum, or as issues in the main repository.
+The current schema deliberately retains the existing association between a student's identity and their candidate selections. This preserves the current data model and workflow, but it does **not** provide secret ballots. Do not use this system for elections that require ballot secrecy without redesigning and migrating vote storage.
 
-## Server Requirements
 
-PHP version 8.1 or higher is required, with the following extensions installed:
-
-- [intl](http://php.net/manual/en/intl.requirements.php)
-- [mbstring](http://php.net/manual/en/mbstring.installation.php)
-
-> [!WARNING]
-> - The end of life date for PHP 7.4 was November 28, 2022.
-> - The end of life date for PHP 8.0 was November 26, 2023.
-> - If you are still using PHP 7.4 or 8.0, you should upgrade immediately.
-> - The end of life date for PHP 8.1 will be December 31, 2025.
-
-Additionally, make sure that the following extensions are enabled in your PHP:
-
-- json (enabled by default - don't turn it off)
-- [mysqlnd](http://php.net/manual/en/mysqlnd.install.php) if you plan to use MySQL
-- [libcurl](http://php.net/manual/en/curl.requirements.php) if you plan to use the HTTP\CURLRequest library

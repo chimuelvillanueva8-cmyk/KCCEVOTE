@@ -64,7 +64,6 @@ writable/debugbar/*
 !writable/debugbar/index.html
 
 php_errors.log
-cloudflared.exe
 
 #-------------------------
 # User Guide Temp Files
@@ -118,7 +117,6 @@ _modules/*
 *.sublime-workspace
 *.sublime-project
 .phpintel
-/api/
 
 # Visual Studio Code
 .vscode/

@@ -1,6 +1,7 @@
 <?php
 namespace App\Controllers\Admin;
 
+use App\Models\AuditLogModel;
 use App\Controllers\BaseController;
 use App\Models\CourseModel;
 use App\Models\DepartmentModel;
@@ -8,6 +9,25 @@ use App\Models\DepartmentModel;
 class Courses extends BaseController
 {
     protected $model;
+
+    private function getRequestData(): array
+    {
+        $post = $this->request->getPost();
+        if (! empty($post)) {
+            return $post;
+        }
+
+        try {
+            $json = $this->request->getJSON(true);
+            if (is_array($json)) {
+                return $json;
+            }
+        } catch (\Exception $e) {
+            return [];
+        }
+
+        return [];
+    }
 
     public function __construct()
     {
@@ -25,7 +45,7 @@ class Courses extends BaseController
     public function all()
     {
         $builder = $this->model
-            ->select('courses.*, departments.department_name, departments.department_code')
+            ->select('courses.*, departments.department_name')
             ->join('departments', 'departments.id = courses.department_id', 'left')
             ->orderBy('courses.created_at', 'DESC');
 
@@ -35,9 +55,8 @@ class Courses extends BaseController
 
     public function store()
     {
-        $data = $this->request->getPost();
+        $data = $this->getRequestData();
         $rules = [
-            'course_code' => 'required',
             'course_name' => 'required',
             'department_id' => 'required|integer',
         ];
@@ -48,11 +67,11 @@ class Courses extends BaseController
 
         $this->model->insert([
             'department_id' => $data['department_id'],
-            'course_code' => strtoupper(trim($data['course_code'])),
             'course_name' => trim($data['course_name']),
             'status' => $data['status'] ?? 'Active',
         ]);
 
+        (new AuditLogModel())->record('CREATE', 'Created course ' . trim($data['course_name']) . '.');
         return $this->response->setJSON(['success' => true, 'message' => 'Course added successfully.']);
     }
 
@@ -64,9 +83,8 @@ class Courses extends BaseController
 
     public function update($id)
     {
-        $data = $this->request->getPost();
+        $data = $this->getRequestData();
         $rules = [
-            'course_code' => 'required',
             'course_name' => 'required',
             'department_id' => 'required|integer',
         ];
@@ -77,11 +95,11 @@ class Courses extends BaseController
 
         $this->model->update($id, [
             'department_id' => $data['department_id'],
-            'course_code' => strtoupper(trim($data['course_code'])),
             'course_name' => trim($data['course_name']),
             'status' => $data['status'] ?? 'Active',
         ]);
 
+        (new AuditLogModel())->record('UPDATE', 'Updated course ' . trim($data['course_name']) . '.');
         return $this->response->setJSON(['success' => true, 'message' => 'Course updated successfully.']);
     }
 
@@ -97,7 +115,11 @@ class Courses extends BaseController
             ]);
         }
 
+        $course = $this->model->find($id);
         $this->model->delete($id);
+        if ($course) {
+            (new AuditLogModel())->record('DELETE', 'Deleted course ' . $course['course_name'] . '.');
+        }
         return $this->response->setJSON(['success' => true, 'message' => 'Course deleted.']);
     }
 
@@ -111,13 +133,14 @@ class Courses extends BaseController
         $newStatus = ($course['status'] === 'Active') ? 'Inactive' : 'Active';
         $this->model->update($id, ['status' => $newStatus]);
 
+        (new AuditLogModel())->record('UPDATE', 'Changed course ' . $course['course_name'] . ' status to ' . $newStatus . '.');
         return $this->response->setJSON(['success' => true, 'status' => $newStatus]);
     }
 
     public function byDepartment($id)
     {
         $courses = $this->model
-            ->select('courses.*, departments.department_name, departments.department_code')
+            ->select('courses.*, departments.department_name')
             ->join('departments', 'departments.id = courses.department_id', 'left')
             ->where('courses.department_id', $id)
             ->where('courses.status', 'Active')

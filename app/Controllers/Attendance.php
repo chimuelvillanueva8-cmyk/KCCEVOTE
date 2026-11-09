@@ -41,6 +41,10 @@ class Attendance extends BaseController
         $year = $this->request->getGet('year_level');
         $section = $this->request->getGet('section');
         $academicYear = $this->request->getGet('school_year');
+        $statusFilter = $this->request->getGet('vote_status');
+        if (! in_array($statusFilter, ['VOTED', 'ABSENT'], true)) {
+            $statusFilter = '';
+        }
         $electionId = $this->request->getGet('election_id');
         $originalElectionId = $electionId; // Preserve original for view
         $showAllElections = empty($electionId);
@@ -53,7 +57,7 @@ class Attendance extends BaseController
 
         // Get election status
         $election = $this->electionModel->find($electionId);
-        $electionClosed = $election && $election['status'] === 'closed';
+        $electionClosed = $election && in_array(strtolower((string) $election['status']), ['closed', 'completed'], true);
 
         // Get all students with filters applied
         $query = $this->studentModel;
@@ -85,7 +89,8 @@ class Attendance extends BaseController
         $data['students'] = $students;
         
         // If election is closed, show all students and mark as VOTED or ABSENT
-        if ($electionClosed) {
+        if ($election) {
+            $voteTimes = $this->voteModel->getVoteTimesByStudent($electionId);
             $attendanceRecords = [];
             foreach ($students as $student) {
                 $hasVoted = $this->voteModel->hasVoted($student['id'], $electionId);
@@ -101,7 +106,7 @@ class Attendance extends BaseController
                     'section' => $student['section'],
                     'school_year' => $student['school_year'],
                     'vote_status' => $hasVoted ? 'VOTED' : 'ABSENT',
-                    'vote_time' => null,
+                    'vote_time' => $voteTimes[(int) $student['id']] ?? null,
                     'election_title' => $election['title'],
                     'election_id' => $election['id']
                 ];
@@ -156,20 +161,12 @@ class Attendance extends BaseController
             $attendanceByElection = [];
             
             foreach ($allElections as $elec) {
-                $elecClosed = $elec && $elec['status'] === 'closed';
+                $elecClosed = in_array(strtolower((string) $elec['status']), ['closed', 'completed'], true);
                 $elecRecords = [];
                 
-                if ($elecClosed) {
-                    $students = $this->studentModel
-                        ->orderBy('department', 'ASC')
-                        ->orderBy('course', 'ASC')
-                        ->orderBy('school_year', 'ASC')
-                        ->orderBy('year_level', 'ASC')
-                        ->orderBy('section', 'ASC')
-                        ->orderBy('full_name', 'ASC')
-                        ->findAll();
-                    
-                    foreach ($students as $student) {
+                if ($elec) {
+                    $voteTimes = $this->voteModel->getVoteTimesByStudent($elec['id']);
+                    foreach ($data['students'] as $student) {
                         $hasVoted = $this->voteModel->hasVoted($student['id'], $elec['id']);
                         
                         $record = [
@@ -183,7 +180,7 @@ class Attendance extends BaseController
                             'section' => $student['section'],
                             'school_year' => $student['school_year'],
                             'vote_status' => $hasVoted ? 'VOTED' : 'ABSENT',
-                            'vote_time' => null,
+                            'vote_time' => $voteTimes[(int) $student['id']] ?? null,
                             'election_title' => $elec['title'],
                             'election_id' => $elec['id']
                         ];
@@ -208,6 +205,12 @@ class Attendance extends BaseController
         } else {
             $data['group_by_election'] = false;
         }
+
+        $data['attendance'] = $this->filterAttendanceByVoteStatus(
+            $data['attendance'],
+            $statusFilter,
+            $showAllElections
+        );
         
         $data['selected_date'] = $date;
         $data['selected_student'] = $studentId;
@@ -239,15 +242,43 @@ class Attendance extends BaseController
 
         // Store current filters
         $data['filters'] = [
-            'election_id' => $electionId,
+            'election_id' => $originalElectionId,
             'department' => $department,
             'course' => $course,
             'year_level' => $year,
             'section' => $section,
             'school_year' => $academicYear,
+            'vote_status' => $statusFilter,
         ];
 
         return view('admin/attendance/index', $data);
+    }
+
+    private function filterAttendanceByVoteStatus(array $attendance, string $statusFilter, bool $grouped): array
+    {
+        if ($statusFilter === '') {
+            return $attendance;
+        }
+
+        $filterRecords = static function (array $records) use ($statusFilter): array {
+            return array_values(array_filter(
+                $records,
+                static fn (array $record): bool => ($record['vote_status'] ?? '') === $statusFilter
+            ));
+        };
+
+        if (! $grouped) {
+            return $filterRecords($attendance);
+        }
+
+        foreach ($attendance as $electionTitle => $records) {
+            $attendance[$electionTitle] = $filterRecords($records);
+            if ($attendance[$electionTitle] === []) {
+                unset($attendance[$electionTitle]);
+            }
+        }
+
+        return $attendance;
     }
 
     public function mark()
@@ -270,6 +301,10 @@ class Attendance extends BaseController
         $year = $this->request->getGet('year_level');
         $section = $this->request->getGet('section');
         $academicYear = $this->request->getGet('school_year');
+        $statusFilter = $this->request->getGet('vote_status');
+        if (! in_array($statusFilter, ['VOTED', 'ABSENT'], true)) {
+            $statusFilter = '';
+        }
         $electionId = $this->request->getGet('election_id');
         $showAllElections = empty($electionId);
         
@@ -280,7 +315,7 @@ class Attendance extends BaseController
         }
 
         $election = $this->electionModel->find($electionId);
-        $electionClosed = $election && $election['status'] === 'closed';
+        $electionClosed = $election && in_array(strtolower((string) $election['status']), ['closed', 'completed'], true);
 
         $query = $this->studentModel;
         if ($department) {
@@ -308,7 +343,8 @@ class Attendance extends BaseController
             ->orderBy('full_name', 'ASC')
             ->findAll();
 
-        if ($electionClosed) {
+        if ($election) {
+            $voteTimes = $this->voteModel->getVoteTimesByStudent($electionId);
             $attendanceRecords = [];
             foreach ($students as $student) {
                 $hasVoted = $this->voteModel->hasVoted($student['id'], $electionId);
@@ -323,7 +359,7 @@ class Attendance extends BaseController
                     'section' => $student['section'],
                     'school_year' => $student['school_year'],
                     'vote_status' => $hasVoted ? 'VOTED' : 'ABSENT',
-                    'vote_time' => null,
+                    'vote_time' => $voteTimes[(int) $student['id']] ?? null,
                     'election_title' => $election['title'],
                     'election_id' => $election['id']
                 ];
@@ -369,7 +405,7 @@ class Attendance extends BaseController
             $attendanceByElection = [];
             
             foreach ($allElections as $elec) {
-                $elecClosed = $elec && $elec['status'] === 'closed';
+                $elecClosed = in_array(strtolower((string) $elec['status']), ['closed', 'completed'], true);
                 $elecRecords = [];
                 
                 // Build query with filters for each election
@@ -399,7 +435,8 @@ class Attendance extends BaseController
                     ->orderBy('full_name', 'ASC')
                     ->findAll();
                 
-                if ($elecClosed) {
+                if ($elec) {
+                    $voteTimes = $this->voteModel->getVoteTimesByStudent($elec['id']);
                     foreach ($elecStudents as $student) {
                         $hasVoted = $this->voteModel->hasVoted($student['id'], $elec['id']);
                         
@@ -414,7 +451,7 @@ class Attendance extends BaseController
                             'section' => $student['section'],
                             'school_year' => $student['school_year'],
                             'vote_status' => $hasVoted ? 'VOTED' : 'ABSENT',
-                            'vote_time' => null,
+                            'vote_time' => $voteTimes[(int) $student['id']] ?? null,
                             'election_title' => $elec['title'],
                             'election_id' => $elec['id']
                         ];
@@ -467,10 +504,16 @@ class Attendance extends BaseController
             $data['group_by_election'] = false;
         }
 
+        $data['attendance'] = $this->filterAttendanceByVoteStatus(
+            $data['attendance'],
+            $statusFilter,
+            $showAllElections
+        );
         $data['selected_date'] = $date;
         $data['selected_student'] = null;
         $data['election_closed'] = $electionClosed;
         $data['election'] = $election;
+        $data['status_filter'] = $statusFilter;
 
         return view('admin/attendance/print', $data);
     }

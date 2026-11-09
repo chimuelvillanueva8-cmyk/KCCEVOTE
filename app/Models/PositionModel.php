@@ -40,32 +40,65 @@ class PositionModel extends Model
 
     public function getByElection(int $electionId, bool $includeInactive = false)
     {
-        $builder = $this->where('(election_id = ' . $this->db->escape($electionId) . ' OR election_id IS NULL)');
+        $builder = $this->db->table($this->table);
+        if ($this->db->fieldExists('election_id', $this->table)) {
+            $builder->groupStart()
+                ->where('positions.election_id', $electionId)
+                ->orWhere(
+                    'EXISTS (SELECT 1 FROM candidates c WHERE c.position_id = positions.id AND c.election_id = ' . $this->db->escape($electionId) . ')',
+                    null,
+                    false
+                )
+            ->groupEnd();
+        } else {
+            $builder->join('candidates c', 'c.position_id = positions.id', 'inner')
+                ->where('c.election_id', $electionId)
+                ->distinct();
+        }
         if (! $includeInactive) {
             $builder->where('status', 'active');
         }
         return $builder->orderBy('sort_order', 'ASC')
                        ->orderBy('id', 'ASC')
-                       ->findAll();
+                       ->get()
+                       ->getResultArray();
     }
 
     public function findForElection(int $positionId, int $electionId)
     {
-        return $this->where('id', $positionId)
-                    ->groupStart()
-                        ->where('election_id', $electionId)
-                        ->orWhere('election_id IS NULL')
-                    ->groupEnd()
-                    ->first();
+        $builder = $this->where('id', $positionId);
+        if ($this->db->fieldExists('election_id', $this->table)) {
+            $builder->groupStart()
+                ->where('election_id', $electionId)
+                ->orWhere('election_id', null)
+            ->groupEnd();
+        } else {
+            $builder->join('candidates c', 'c.position_id = positions.id', 'inner')
+                ->where('c.election_id', $electionId);
+        }
+        return $builder->first();
     }
 
     public function countByElection(int $electionId): int
     {
-        return (int) $this->groupStart()
-                              ->where('election_id', $electionId)
-                              ->orWhere('election_id IS NULL')
-                          ->groupEnd()
-                          ->countAllResults();
+        if ($this->db->fieldExists('election_id', $this->table)) {
+            return (int) $this->db->table('positions')
+                ->groupStart()
+                ->where('positions.election_id', $electionId)
+                ->orWhere(
+                    'EXISTS (SELECT 1 FROM candidates c WHERE c.position_id = positions.id AND c.election_id = ' . $this->db->escape($electionId) . ')',
+                    null,
+                    false
+                )
+                ->groupEnd()
+                ->countAllResults();
+        }
+
+        return (int) $this->db->table('positions p')
+                ->join('candidates c', 'c.position_id = p.id', 'inner')
+                ->where('c.election_id', $electionId)
+                ->distinct()
+                ->countAllResults();
     }
 
     public function countCandidates(int $positionId, ?int $electionId = null): int

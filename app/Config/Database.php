@@ -194,6 +194,24 @@ class Database extends Config
     {
         parent::__construct();
 
+        $this->default['hostname'] = (string) env(
+            'database.default.hostname',
+            ENVIRONMENT === 'production' ? '' : '127.0.0.1'
+        );
+        $this->default['username'] = (string) env(
+            'database.default.username',
+            ENVIRONMENT === 'production' ? '' : 'root'
+        );
+        $this->default['password'] = (string) env('database.default.password', '');
+        $this->default['database'] = (string) env(
+            'database.default.database',
+            ENVIRONMENT === 'production' ? '' : 'voting_system'
+        );
+        $this->default['DBDriver'] = (string) env('database.default.DBDriver', 'MySQLi');
+        $this->default['DBPrefix'] = (string) env('database.default.DBPrefix', '');
+        $this->default['port'] = (int) env('database.default.port', 3306);
+        $this->default['DBDebug'] = ENVIRONMENT !== 'production';
+
         // Ensure that we always set the database group to 'tests' if
         // we are currently running an automated test suite, so that
         // we don't overwrite live data on accident.

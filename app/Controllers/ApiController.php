@@ -36,37 +36,74 @@ class ApiController extends BaseController
 
     public function getStats()
     {
-        if ($this->request->getMethod() !== 'get') {
+        if (strtoupper($this->request->getMethod()) !== 'GET') {
             return $this->response->setStatusCode(405)->setJSON(['error' => 'Method not allowed']);
         }
 
+        $electionsOverview = $this->electionModel->getOverviewSummary();
         $studentCount = $this->studentModel->countAllResults();
         $voteCount = $this->voteModel->countAllResults();
-        $candidateCount = $this->candidateModel->countAllResults();
 
-        $election = $this->electionModel->where('status', 'open')
-            ->orderBy('start_time', 'DESC')
-            ->first();
+        $requestedElectionId = filter_var($this->request->getGet('election_id'), FILTER_VALIDATE_INT);
+        $election = $requestedElectionId
+            ? $this->electionModel->find($requestedElectionId)
+            : $this->electionModel->where('status', 'open')
+                ->orderBy('start_time', 'DESC')
+                ->orderBy('id', 'DESC')
+                ->first();
 
-        if (! $election) {
+        if (! $election && ! $requestedElectionId) {
             $election = $this->electionModel->orderBy('id', 'DESC')->first();
         }
 
         $electionStatus = $election ? strtoupper($election['status']) : 'NONE';
-        $voteProgress = $studentCount ? min(100, round($voteCount / $studentCount * 100)) : 0;
+        $candidateCount = $election
+            ? count(array_unique(array_column($this->candidateModel->getByElection((int) $election['id'], true), 'id')))
+            : 0;
+        $voterCount = $election
+            ? (int) \Config\Database::connect()->table('votes')
+                ->select('student_id')
+                ->where('election_id', $election['id'])
+                ->distinct()
+                ->countAllResults()
+            : 0;
+        $eligibleVoterCount = $election ? $this->countEligibleVoters($election) : 0;
+        $voteProgress = $eligibleVoterCount ? min(100, (int) round($voterCount / $eligibleVoterCount * 100)) : 0;
+        $candidateResults = $election
+            ? array_map(static fn (array $candidate): array => [
+                'candidate_id' => (int) $candidate['candidate_id'],
+                'vote_count' => (int) $candidate['vote_count'],
+            ], $this->voteModel->getResults((int) $election['id']))
+            : [];
 
-        $activities = $this->buildRecentActivity();
-        $systemStatus = $this->buildSystemStatus($electionStatus);
+        $isBuiltInAdmin = (bool) session()->get('is_builtin_admin');
+        $activities = $isBuiltInAdmin ? $this->buildRecentActivity() : $this->buildStudentActivity();
+        $systemStatus = $isBuiltInAdmin
+            ? $this->buildSystemStatus($electionStatus)
+            : $this->buildGeneralSystemStatus();
 
         return $this->response->setJSON([
             'students' => $studentCount,
             'votes' => $voteCount,
             'candidates' => $candidateCount,
             'election_status' => $electionStatus,
+            'election_title' => $election['title'] ?? null,
+            'voters' => $voterCount,
+            'eligible_voters' => $eligibleVoterCount,
             'vote_progress' => $voteProgress,
+            'turnout_rate' => $eligibleVoterCount
+                ? round($voterCount / $eligibleVoterCount * 100, 2)
+                : 0,
+            'candidate_results' => $candidateResults,
+            'elections_overview' => $electionsOverview,
             'activities' => $activities,
             'system_status' => $systemStatus,
         ]);
+    }
+
+    private function countEligibleVoters(array $election): int
+    {
+        return $this->electionModel->countEligibleVoters($election);
     }
 
     private function buildRecentActivity()
@@ -105,12 +142,47 @@ class ApiController extends BaseController
         return array_slice($activities, 0, 5);
     }
 
+    private function buildStudentActivity(): array
+    {
+        return \Config\Database::connect()->table('students')
+            ->select("created_at as created_at, CONCAT(full_name, ' joined the system') as description")
+            ->orderBy('created_at', 'DESC')
+            ->limit(5)
+            ->get()
+            ->getResultArray();
+    }
+
+    private function buildGeneralSystemStatus(): array
+    {
+        $status = [
+            'database' => ['label' => 'Database', 'value' => 'OK', 'detail' => 'Connected'],
+            'face_recognition' => [
+                'label' => 'Face Registration',
+                'value' => (string) \Config\Database::connect()->table('students')->where('face_registered', 1)->countAllResults(),
+                'detail' => 'Students with a registered face',
+            ],
+            'backup' => ['label' => 'Backup', 'value' => 'UNKNOWN', 'detail' => $this->getBackupTimestamp()],
+        ];
+
+        try {
+            \Config\Database::connect()->simpleQuery('SELECT 1');
+        } catch (\Throwable $e) {
+            $status['database'] = ['label' => 'Database', 'value' => 'DOWN', 'detail' => 'Connection failed'];
+        }
+
+        return $status;
+    }
+
     private function buildSystemStatus(string $electionStatus)
     {
         $status = [
             'database' => ['label' => 'Database', 'value' => 'OK', 'detail' => 'Connected'],
             'voting_system' => ['label' => 'Voting System', 'value' => $electionStatus === 'OPEN' ? 'OPEN' : 'CLOSED', 'detail' => $electionStatus === 'OPEN' ? 'Election open' : 'No active election'],
-            'face_recognition' => ['label' => 'Face Recognition', 'value' => 'FACE API.JS', 'detail' => 'Ready in browser'],
+            'face_recognition' => [
+                'label' => 'Face Registration',
+                'value' => (string) \Config\Database::connect()->table('students')->where('face_registered', 1)->countAllResults(),
+                'detail' => 'Students with a registered face',
+            ],
             'backup' => ['label' => 'Backup', 'value' => 'UNKNOWN', 'detail' => $this->getBackupTimestamp()],
         ];
 
@@ -144,6 +216,6 @@ class ApiController extends BaseController
             return $carry === null || filemtime($item) > filemtime($carry) ? $item : $carry;
         });
 
-        return $latest ? date('M d, Y H:i:s', filemtime($latest)) : 'Unavailable';
+        return $latest ? date('M d, Y h:i:s A', filemtime($latest)) : 'Unavailable';
     }
 }

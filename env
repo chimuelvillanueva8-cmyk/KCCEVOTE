@@ -1,0 +1,23 @@
+# Copy this file to .env and set all values for the target environment.
+CI_ENVIRONMENT = development
+
+# Production requires the public HTTPS URL.
+app.baseURL = 'http://localhost:8080/'
+app.forceGlobalSecureRequests = false
+
+database.default.hostname = '127.0.0.1'
+database.default.database = 'voting_system'
+database.default.username = 'voting_app'
+database.default.password = 'CHANGE_ME'
+database.default.DBDriver = MySQLi
+database.default.DBPrefix =
+database.default.port = 3306
+
+session.driver = 'CodeIgniter\Session\Handlers\FileHandler'
+# Set an absolute writable path for deployment, outside the public document root.
+# session.savePath = '/absolute/path/to/writable/session'
+logger.threshold = 4
+
+# Configure only when face services are enabled.
+# AZURE_FACE_ENDPOINT = 'https://your-resource.cognitiveservices.azure.com'
+# AZURE_FACE_KEY = 'CHANGE_ME'

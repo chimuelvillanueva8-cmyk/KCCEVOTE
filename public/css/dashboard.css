@@ -914,6 +914,37 @@ body.dashboard-page .topbar {
     color: #FFFFFF;
 }
 
+.voting-page-container .dashboard-header {
+    display: flex;
+    width: 100%;
+    justify-content: center;
+    align-items: center;
+    padding-right: 0;
+    padding-left: 0;
+    text-align: center;
+}
+
+.voting-page-container .dashboard-header .voting-welcome-title {
+    width: 100%;
+    margin: 0;
+    color: #FFFFFF !important;
+    font-size: clamp(1.45rem, 3vw, 2.5rem);
+    line-height: 1.25;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
+.voting-page-container .voting-election-card .card-header h2 {
+    color: #FFFFFF !important;
+}
+
+.voting-page-container .event-item .btn.btn-admin,
+.voting-page-container .event-item .btn.btn-admin:hover,
+.voting-page-container .event-item .btn.btn-admin:focus,
+.voting-page-container .event-item .btn.btn-admin:active {
+    color: #2D4A73 !important;
+}
+
 body.dashboard-page .topbar-title h2 {
     color: #FFFFFF;
 }
@@ -958,6 +989,16 @@ body.dashboard-page .circle-labels h4 {
 
 body.dashboard-page .circle-labels p {
     color: #FFFFFF;
+}
+
+body.dashboard-page .attendance-election-title {
+    margin: 0 0 14px;
+    color: #FCD34D;
+    font-size: 1.35rem;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: 0;
+    text-shadow: 0 0 12px rgba(252, 211, 77, 0.22);
 }
 
 body.dashboard-page .activity-card {
@@ -1028,7 +1069,7 @@ body.dashboard-page .status-pill.status-pending {
 
 body.dashboard-page .status-pill.status-closed {
     background: rgba(252, 211, 77, 0.24);
-    color: #FCD34D;
+    color: #FFFFFF;
 }
 
 body.dashboard-page .line-path {
@@ -1738,8 +1779,7 @@ body.dashboard-page .logout-link {
 }
 
 .modal,
-#viewModal,
-#confirmModal {
+#viewModal {
     display: none !important;
     visibility: hidden !important;
     opacity: 0 !important;
@@ -1766,3 +1806,76 @@ body.dashboard-page .logout-link {
 /* password toggle button disabled styling */
 .password-action-disabled { opacity: 0.5; cursor: not-allowed; }
 
+body.dashboard-page.dashboard-home .stats-overview {
+    align-items: start;
+}
+
+body.dashboard-page.dashboard-home .stats-overview .stat-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    min-height: 0;
+    padding: 1.5rem;
+    text-align: left;
+}
+
+body.dashboard-page.dashboard-home .stats-overview .stat-icon {
+    flex: 0 0 56px;
+    width: 56px;
+    height: 56px;
+    margin: 0;
+}
+
+body.dashboard-page.dashboard-home .stats-overview .stat-content {
+    min-width: 0;
+}
+
+body.dashboard-page.dashboard-home .stats-overview .stat-content h3 {
+    font-size: 2rem;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+}
+
+body.dashboard-page.dashboard-home .stats-overview .stat-content p {
+    margin: 0.4rem 0 0;
+    font-size: 0.95rem;
+}
+
+.dashboard-vote-progress {
+    position: relative;
+    height: 18px;
+    margin-bottom: 1rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(229, 231, 235, 0.8);
+}
+
+.dashboard-vote-progress-fill {
+    height: 100%;
+    min-width: 0;
+    border-radius: inherit;
+    background: var(--gradient-primary);
+    transition: width 0.35s ease;
+}
+
+.dashboard-vote-progress-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #FFFFFF !important;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.dashboard-error {
+    margin: 0 0 1rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid rgba(248, 113, 113, 0.5);
+    border-radius: 8px;
+    background: rgba(127, 29, 29, 0.3);
+    color: #FCA5A5 !important;
+}

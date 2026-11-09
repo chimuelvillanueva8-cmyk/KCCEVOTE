@@ -6,6 +6,10 @@ class DevDebug extends BaseController
 {
     public function session()
     {
+        if (ENVIRONMENT === 'production') {
+            return $this->response->setStatusCode(404);
+        }
+
         // Restrict to localhost for safety
         $remote = $_SERVER['REMOTE_ADDR'] ?? '';
         if (!in_array($remote, ['127.0.0.1', '::1', 'localhost'])) {
@@ -14,15 +18,9 @@ class DevDebug extends BaseController
 
         $sess = session();
         $data = [
-            'remote_addr' => $remote,
-            'session' => []
+            'role' => $sess->get('role'),
+            'isLoggedIn' => (bool) $sess->get('isLoggedIn'),
         ];
-        foreach ($sess->get() as $k => $v) {
-            $data['session'][$k] = $v;
-        }
-
-        // include cookies for debugging
-        $data['cookies'] = $_COOKIE ?? [];
 
         return $this->response->setJSON($data);
     }

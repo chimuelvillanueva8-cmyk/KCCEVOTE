@@ -27,7 +27,8 @@
 
     $electionModel = new \App\Models\ElectionModel();
     $voteModel = new \App\Models\VoteModel();
-    $openElections = $electionModel->where('status', 'open')->orderBy('id', 'DESC')->findAll();
+    $electionModel->syncScheduledStatuses();
+    $openElections = $electionModel->whereIn('status', ['open', 'closed'])->orderBy('id', 'DESC')->findAll();
 
     $studentGovernmentElection = null;
     foreach ($openElections as $key => $election) {
@@ -56,6 +57,11 @@
             $groupedResults[$result['position']][] = $result;
         }
         $electionResultsById[$election['id']] = $groupedResults;
+    }
+    $tieWinnerRows = $db->table('election_tie_winners')->get()->getResultArray();
+    $tieWinnerIdsByElection = [];
+    foreach ($tieWinnerRows as $tieWinnerRow) {
+        $tieWinnerIdsByElection[(int) $tieWinnerRow['election_id']][(int) $tieWinnerRow['position_id']] = (int) $tieWinnerRow['candidate_id'];
     }
 ?>
 <div class="page-shell">
@@ -204,7 +210,7 @@
                                     <div class="compact-election-title-wrap">
                                         <div class="compact-election-title"><?= esc($election['title']) ?></div>
                                         <div class="compact-election-meta">
-                                            <span class="micro-badge live">Live</span>
+                                            <span class="micro-badge <?= strtolower((string) $election['status']) === 'closed' ? 'neutral' : 'live' ?>"><?= strtolower((string) $election['status']) === 'closed' ? 'Final' : 'Live' ?></span>
                                             <span class="status-inline"><?= esc(ucfirst($election['status'])) ?></span>
                                         </div>
                                     </div>
@@ -241,7 +247,7 @@
 
                                     <div class="results-panel">
                                         <div class="results-panel-header">
-                                            <h3>Live Vote Results</h3>
+                                            <h3><?= strtolower((string) $election['status']) === 'closed' ? 'Final Vote Results' : 'Live Vote Results' ?></h3>
                                             <span class="micro-badge neutral"><?= count($groupedResults) ?: 0 ?> positions</span>
                                         </div>
 
@@ -254,15 +260,40 @@
                                                         <span class="position-count"><?= count($candidates) ?> candidates</span>
                                                     </div>
 
+                                                    <?php
+                                                        $highestPositionVotes = max(array_map(static fn ($row) => (int) $row['vote_count'], $candidates));
+                                                        $leaders = array_values(array_filter(
+                                                            $candidates,
+                                                            static fn ($row) => (int) $row['vote_count'] === $highestPositionVotes
+                                                        ));
+                                                        $leaderCount = $highestPositionVotes > 0 ? count($leaders) : 0;
+                                                        $electionClosed = strtolower((string) $election['status']) === 'closed';
+                                                        $selectedTieWinnerId = $tieWinnerIdsByElection[(int) $election['id']][(int) ($leaders[0]['position_id'] ?? 0)] ?? null;
+                                                    ?>
                                                     <?php foreach ($candidates as $candidate) : ?>
                                                         <?php $voteCount = (int) $candidate['vote_count']; ?>
                                                         <?php $barWidth = $positionTotal > 0 ? round(($voteCount / $positionTotal) * 100) : 0; ?>
+                                                        <?php
+                                                            $isTopCandidate = $highestPositionVotes > 0 && $voteCount === $highestPositionVotes;
+                                                            $isSelectedWinner = $electionClosed
+                                                                && $isTopCandidate
+                                                                && $selectedTieWinnerId !== null
+                                                                && (int) $candidate['candidate_id'] === (int) $selectedTieWinnerId;
+                                                            $resultLabel = '';
+                                                            if ($isSelectedWinner) {
+                                                                $resultLabel = 'Winner';
+                                                            } elseif ($isTopCandidate && $leaderCount > 1) {
+                                                                $resultLabel = 'TIE';
+                                                            } elseif ($isTopCandidate) {
+                                                                $resultLabel = $electionClosed ? 'Winner' : 'Leading';
+                                                            }
+                                                        ?>
                                                         <div class="result-item">
                                                             <div class="result-copy">
                                                                 <div class="result-header-line">
                                                                     <span class="candidate-name"><?= esc($candidate['full_name']) ?></span>
-                                                                    <?php if ($candidate === reset($candidates)) : ?>
-                                                                        <span class="leading-badge">Leading</span>
+                                                                    <?php if ($resultLabel !== '') : ?>
+                                                                        <span class="leading-badge"><?= esc($resultLabel) ?></span>
                                                                     <?php endif; ?>
                                                                 </div>
                                                                 <div class="bar-track">
@@ -417,7 +448,7 @@
     })();
 
     (function () {
-        const statsUrl = 'api/get_stats.php';
+        const statsUrl = <?= json_encode(base_url('api/public-stats')) ?>;
         const registeredValue = document.getElementById('registered-voters-value');
         const votesValue = document.getElementById('votes-cast-value');
         const participationValue = document.getElementById('participation-value');

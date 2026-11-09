@@ -4,6 +4,21 @@ namespace App\Libraries;
 
 class FaceIdentity
 {
+    public static function isValidDescriptor(array $descriptor): bool
+    {
+        if (count($descriptor) !== 128) {
+            return false;
+        }
+
+        foreach ($descriptor as $value) {
+            if (! is_numeric($value) || ! is_finite((float) $value)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public static function buildPayload(?string $azureFaceId, array $descriptor = [], array $attributes = []): array
     {
         return [
@@ -60,5 +75,20 @@ class FaceIdentity
         }
 
         return [];
+    }
+
+    public static function descriptorsMatch(array $left, array $right, float $threshold = 0.35): bool
+    {
+        if (! self::isValidDescriptor($left) || ! self::isValidDescriptor($right)) {
+            return false;
+        }
+
+        $distance = 0.0;
+        foreach ($left as $index => $value) {
+            $difference = (float) $value - (float) $right[$index];
+            $distance += $difference * $difference;
+        }
+
+        return sqrt($distance) < $threshold;
     }
 }

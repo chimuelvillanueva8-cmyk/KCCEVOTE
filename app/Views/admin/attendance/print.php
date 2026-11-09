@@ -17,7 +17,7 @@
 </head>
 <body>
     <h1>Attendance Report<?php echo (!empty($election) && isset($election['title']) && empty($group_by_election)) ? ': ' . esc($election['title']) : (empty($group_by_election) ? '' : ': All Elections'); ?></h1>
-    <p>Date: <?= esc($selected_date) ?> | Student: <?= $selected_student ? 'Filtered' : 'All' ?></p>
+    <p>Date: <?= esc($selected_date) ?> | Student: <?= $selected_student ? 'Filtered' : 'All' ?><?php if (! empty($status_filter)): ?> | Status: <?= $status_filter === 'VOTED' ? 'Voted' : 'Absent' ?><?php endif; ?></p>
     
     <?php if (!empty($attendance) && !empty($group_by_election)): ?>
         <!-- Display grouped by election -->

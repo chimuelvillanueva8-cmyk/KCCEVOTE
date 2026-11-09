@@ -9,12 +9,23 @@ if (! empty($election['allowed_departments'])) {
     $selectedDepartments = json_decode($election['allowed_departments'], true) ?? [];
 }
 $positionList = $positions ?? [];
+$candidatePositionList = $candidatePositions ?? $positionList;
 $partyList = $parties ?? [];
+$candidatePartyList = $candidateParties ?? $partyList;
 $candidateList = $candidates ?? [];
-$studentLookup = [];
-foreach ($students ?? [] as $student) {
-    $studentLookup[(string) ($student['id'] ?? $student['student_id'])] = $student;
-}
+$yearLevels = $yearLevels ?? [];
+$formatDateTimeLocal = static function ($value): string {
+    if (! is_string($value) || $value === '' || str_starts_with($value, '0000-')) {
+        return '';
+    }
+
+    $timestamp = strtotime($value);
+    if ($timestamp === false || (int) date('Y', $timestamp) < 1000) {
+        return '';
+    }
+
+    return date('Y-m-d\TH:i', $timestamp);
+};
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -137,12 +148,24 @@ foreach ($students ?? [] as $student) {
 
                         <div class="compact-grid">
                             <div class="form-group">
+                                <label for="status">Election Status</label>
+                                <?php
+                                $statusValue = old('status', $election['status'] ?? 'pending');
+                                $statusValue = ['draft' => 'pending', 'active' => 'open', 'completed' => 'closed', 'inactive' => 'pending'][$statusValue] ?? $statusValue;
+                                ?>
+                                <select id="status" name="status" class="form-control" required>
+                                    <option value="pending" <?= $statusValue === 'pending' ? 'selected' : '' ?>>Pending</option>
+                                    <option value="open" <?= $statusValue === 'open' ? 'selected' : '' ?>>Open</option>
+                                    <option value="closed" <?= $statusValue === 'closed' ? 'selected' : '' ?>>Closed</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
                                 <label for="start_time">Start Time</label>
-                                <input type="datetime-local" id="start_time" name="start_time" class="form-control" value="<?= esc(old('start_time', isset($election['start_time']) && $election['start_time'] ? date('Y-m-d\TH:i', strtotime($election['start_time'])) : '')) ?>">
+                                <input type="datetime-local" id="start_time" name="start_time" class="form-control" value="<?= esc(old('start_time', $formatDateTimeLocal($election['start_time'] ?? null))) ?>">
                             </div>
                             <div class="form-group">
                                 <label for="end_time">End Time</label>
-                                <input type="datetime-local" id="end_time" name="end_time" class="form-control" value="<?= esc(old('end_time', isset($election['end_time']) && $election['end_time'] ? date('Y-m-d\TH:i', strtotime($election['end_time'])) : '')) ?>">
+                                <input type="datetime-local" id="end_time" name="end_time" class="form-control" value="<?= esc(old('end_time', $formatDateTimeLocal($election['end_time'] ?? null))) ?>">
                             </div>
                         </div>
 
@@ -337,6 +360,9 @@ foreach ($students ?? [] as $student) {
                             </div>
                         </div>
 
+                        <?php if (strtolower((string) ($election['status'] ?? '')) === 'open'): ?>
+                            <div class="alert alert-warning" role="status">Candidate information cannot be modified during an active election.</div>
+                        <?php else: ?>
                         <div class="subsection">
                             <h4>Candidates</h4>
                             <div class="mini-list">
@@ -348,20 +374,26 @@ foreach ($students ?? [] as $student) {
                                             <form action="<?= base_url('admin/candidates/update/' . $candidate['id']) ?>" method="post" enctype="multipart/form-data">
                                                 <?= csrf_field() ?>
                                                 <input type="hidden" name="redirect_to" value="<?= base_url('admin/elections/edit/' . $election['id']) ?>">
+                                                <?php
+                                                    $candidateEligibleLevels = json_decode($candidate['eligible_year_levels'] ?? '', true);
+                                                    $candidateEligibleLevels = is_array($candidateEligibleLevels) ? $candidateEligibleLevels : [];
+                                                    $preserveMultipleEligibility = count($candidateEligibleLevels) > 1;
+                                                ?>
+                                                <?php if ($preserveMultipleEligibility): ?>
+                                                    <?php foreach ($candidateEligibleLevels as $eligibleLevel): ?>
+                                                        <input type="hidden" name="eligible_year_levels[]" value="<?= esc($eligibleLevel) ?>">
+                                                    <?php endforeach; ?>
+                                                <?php endif; ?>
                                                 <div class="compact-grid">
                                                     <div class="form-group">
                                                         <label>Full Name</label>
                                                         <input type="text" name="full_name" class="form-control" value="<?= esc($candidate['full_name'] ?? '') ?>" required>
                                                     </div>
                                                     <div class="form-group">
-                                                        <label>Student ID</label>
-                                                        <input type="text" name="student_id" class="form-control" value="<?= esc($candidate['student_id'] ?? '') ?>">
-                                                    </div>
-                                                    <div class="form-group">
                                                         <label>Position</label>
                                                         <select name="position_id" class="form-control" required>
                                                             <option value="">Select a position</option>
-                                                            <?php foreach ($positionList as $position): ?>
+                                                            <?php foreach ($candidatePositionList as $position): ?>
                                                                 <option value="<?= (int) $position['id'] ?>" <?= ((int) ($candidate['position_id'] ?? 0) === (int) $position['id']) ? 'selected' : '' ?>><?= esc($position['title']) ?></option>
                                                             <?php endforeach; ?>
                                                         </select>
@@ -370,13 +402,31 @@ foreach ($students ?? [] as $student) {
                                                         <label>Party</label>
                                                         <select name="party_id" class="form-control">
                                                             <option value="">Independent</option>
-                                                            <?php foreach ($partyList as $party): ?>
+                                                            <?php foreach ($candidatePartyList as $party): ?>
                                                                 <option value="<?= (int) $party['id'] ?>" <?= ((int) ($candidate['party_id'] ?? 0) === (int) $party['id']) ? 'selected' : '' ?>><?= esc($party['name']) ?></option>
                                                             <?php endforeach; ?>
                                                         </select>
                                                     </div>
+                                                    <div class="form-group">
+                                                        <label>Eligible Voter Year Level</label>
+                                                        <select name="eligible_year_level" class="form-control">
+                                                            <option value="" <?= empty($candidateEligibleLevels) ? 'selected' : '' ?>>All year levels</option>
+                                                            <?php if ($preserveMultipleEligibility): ?>
+                                                                <option value="__preserve__" selected>Keep current selected year levels</option>
+                                                            <?php endif; ?>
+                                                            <?php foreach ($yearLevels ?? [] as $yearLevelRow): ?>
+                                                                <?php $yearLevel = (string) $yearLevelRow['year_level']; ?>
+                                                                <option value="<?= esc($yearLevel) ?>" <?= count($candidateEligibleLevels) === 1 && $candidateEligibleLevels[0] === $yearLevel ? 'selected' : '' ?>><?= esc($yearLevel) ?></option>
+                                                            <?php endforeach; ?>
+                                                        </select>
+                                                        <small>Only students at the selected year level can vote for this candidate. Choose All year levels for unrestricted access.</small>
+                                                    </div>
                                                 </div>
                                                 <div class="form-group">
+                                                    <?php if (! empty($candidate['photo'])): ?>
+                                                        <label>Current Photo</label>
+                                                        <div><img src="<?= esc(base_url('uploads/candidates/' . $candidate['photo'])) ?>" alt="<?= esc($candidate['full_name']) ?>" style="width: 88px; height: 88px; object-fit: cover; border-radius: 8px; border: 1px solid #2d5a7b; margin-bottom: 0.5rem;"></div>
+                                                    <?php endif; ?>
                                                     <label>Photo</label>
                                                     <input type="file" name="photo" class="form-control" accept="image/*">
                                                 </div>
@@ -403,14 +453,10 @@ foreach ($students ?? [] as $student) {
                                             <input type="text" name="full_name" class="form-control" required>
                                         </div>
                                         <div class="form-group">
-                                            <label>Student ID</label>
-                                            <input type="text" name="student_id" class="form-control">
-                                        </div>
-                                        <div class="form-group">
                                             <label>Position</label>
                                             <select name="position_id" class="form-control" required>
                                                 <option value="">Select a position</option>
-                                                <?php foreach ($positionList as $position): ?>
+                                                <?php foreach ($candidatePositionList as $position): ?>
                                                     <option value="<?= (int) $position['id'] ?>"><?= esc($position['title']) ?></option>
                                                 <?php endforeach; ?>
                                             </select>
@@ -419,10 +465,20 @@ foreach ($students ?? [] as $student) {
                                             <label>Party</label>
                                             <select name="party_id" class="form-control">
                                                 <option value="">Independent</option>
-                                                <?php foreach ($partyList as $party): ?>
+                                                <?php foreach ($candidatePartyList as $party): ?>
                                                     <option value="<?= (int) $party['id'] ?>"><?= esc($party['name']) ?></option>
                                                 <?php endforeach; ?>
                                             </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Eligible Voter Year Level</label>
+                                            <select name="eligible_year_level" class="form-control">
+                                                <option value="">All year levels</option>
+                                                <?php foreach ($yearLevels ?? [] as $yearLevelRow): ?>
+                                                    <option value="<?= esc($yearLevelRow['year_level']) ?>"><?= esc($yearLevelRow['year_level']) ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                            <small>Only students at the selected year level can vote for this candidate.</small>
                                         </div>
                                     </div>
                                     <div class="form-group">
@@ -433,6 +489,13 @@ foreach ($students ?? [] as $student) {
                                 </form>
                             </div>
                         </div>
+                        <?php endif; ?>
+                    <?php endif; ?>
+
+                    <?php if ($mode === 'edit'): ?>
+                        <div class="inline-actions" style="justify-content: flex-end; margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid #2d5a7b;">
+                            <button type="submit" form="election-information" class="btn btn-primary">Update Election Details</button>
+                        </div>
                     <?php endif; ?>
                 </div>
             </div>
@@ -440,4 +503,3 @@ foreach ($students ?? [] as $student) {
     </div>
 </body>
 </html>
-

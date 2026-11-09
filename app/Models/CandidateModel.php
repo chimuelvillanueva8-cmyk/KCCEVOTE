@@ -21,6 +21,7 @@ class CandidateModel extends Model
         'election_id',
         'photo',
         'status',
+        'eligible_year_levels',
     ];
 
     protected $validationRules = [
@@ -31,6 +32,7 @@ class CandidateModel extends Model
         'election_id' => 'required|is_natural_no_zero',
         'photo'       => 'permit_empty|max_length[255]',
         'status'      => 'permit_empty|in_list[active,inactive]',
+        'eligible_year_levels' => 'permit_empty|max_length[2000]',
     ];
 
     protected $validationMessages = [
@@ -44,27 +46,57 @@ class CandidateModel extends Model
     public function getByElection(int $electionId, bool $includeInactive = false)
     {
         $db = \Config\Database::connect();
+        $hasPositionElectionId = $db->fieldExists('election_id', 'positions');
         $builder = $db->table('candidates c');
         $builder->select('c.*, s.full_name as student_full_name, s.student_id as s_student_id, s.department as student_department,
                           p.name as party_name, p.acronym as party_acronym,
-                          pos.title as position_title, pos.sort_order, pos.votes_required');
+                          pos.title as position_title, pos.sort_order, pos.votes_required, e.status as election_status');
         $builder->join('students s', 's.student_id = c.student_id OR s.id = CAST(c.student_id AS UNSIGNED)', 'left');
-        $builder->join('parties p', 'p.id = c.party_id', 'left');
         $builder->join('positions pos', 'pos.id = c.position_id', 'left');
-        $builder->where('c.election_id', $electionId);
+        $partyElectionCondition = $hasPositionElectionId
+            ? 'p.id = c.party_id AND (p.election_id = c.election_id OR p.election_id IS NULL OR (c.election_id IS NULL AND p.election_id = pos.election_id))'
+            : 'p.id = c.party_id AND (p.election_id = c.election_id OR p.election_id IS NULL)';
+        $builder->join('parties p', $partyElectionCondition, 'left');
+        $electionJoin = $hasPositionElectionId
+            ? 'e.id = COALESCE(c.election_id, pos.election_id)'
+            : 'e.id = c.election_id';
+        $builder->join('elections e', $electionJoin, 'left');
+        $builder->groupStart()
+            ->where('c.election_id', $electionId);
+        if ($hasPositionElectionId) {
+            $builder->orGroupStart()
+                ->where('c.election_id', null)
+                ->where('pos.election_id', $electionId)
+            ->groupEnd();
+        }
+        $builder->groupEnd();
         if (! $includeInactive) {
             $builder->where('c.status', 'active');
         }
         $builder->orderBy('pos.sort_order', 'ASC');
+        $builder->orderBy('c.id', 'ASC');
         $builder->orderBy('c.full_name', 'ASC');
         return $builder->get()->getResultArray();
     }
 
     public function findForElection(int $candidateId, int $electionId)
     {
-        return $this->where('id', $candidateId)
-                    ->where('election_id', $electionId)
-                    ->first();
+        $hasPositionElectionId = $this->db->fieldExists('election_id', 'positions');
+        $builder = $this->db->table('candidates c');
+        $builder->select('c.*')
+                ->join('positions pos', 'pos.id = c.position_id', 'left')
+                ->where('c.id', $candidateId)
+                ->groupStart()
+                    ->where('c.election_id', $electionId);
+        if ($hasPositionElectionId) {
+            $builder->orGroupStart()
+                ->where('c.election_id', null)
+                ->where('pos.election_id', $electionId)
+            ->groupEnd();
+        }
+        $builder->groupEnd();
+
+        return $builder->get()->getRowArray();
     }
 
     public function countByElection(int $electionId): int

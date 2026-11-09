@@ -6,7 +6,7 @@ class AzureFaceController extends BaseController
 {
     public function detect()
     {
-        if ($this->request->getMethod() !== 'post') {
+        if (strtolower($this->request->getMethod()) !== 'post') {
             return $this->response->setStatusCode(405)->setJSON([
                 'success' => false,
                 'message' => 'Method not allowed'
@@ -86,7 +86,7 @@ class AzureFaceController extends BaseController
 
     public function verify()
     {
-        if ($this->request->getMethod() !== 'post') {
+        if (strtolower($this->request->getMethod()) !== 'post') {
             return $this->response->setStatusCode(405)->setJSON([
                 'success' => false,
                 'message' => 'Method not allowed'

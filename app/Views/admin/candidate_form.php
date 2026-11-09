@@ -61,7 +61,17 @@ $redirectTo = \Config\Services::request()->getGet('redirect_to');
                             <select id="position_id" name="position_id" class="form-control" required>
                                 <option value="">Select position</option>
                                 <?php foreach ($positions as $position): ?>
-                                    <option value="<?= esc($position['id']) ?>" <?= old('position_id', $candidate['position_id'] ?? '') == $position['id'] ? 'selected' : '' ?>><?= esc($position['title']) ?></option>
+                                    <?php
+                                        $positionElection = null;
+                                        foreach ($elections as $electionOption) {
+                                            if ((int) ($electionOption['id'] ?? 0) === (int) ($position['election_id'] ?? 0)) {
+                                                $positionElection = $electionOption;
+                                                break;
+                                            }
+                                        }
+                                        $positionLocked = strtolower((string) ($positionElection['status'] ?? '')) === 'open';
+                                    ?>
+                                    <option value="<?= esc($position['id']) ?>" <?= $positionLocked ? 'disabled' : '' ?> <?= old('position_id', $candidate['position_id'] ?? '') == $position['id'] ? 'selected' : '' ?>><?= esc($position['title']) ?><?= $positionLocked ? ' (Election Open)' : '' ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
@@ -81,10 +91,28 @@ $redirectTo = \Config\Services::request()->getGet('redirect_to');
                             <select id="election_id" name="election_id" class="form-control">
                                 <option value="">No election assigned</option>
                                 <?php foreach ($elections as $electionOption): ?>
-                                    <option value="<?= esc($electionOption['id']) ?>" <?= old('election_id', $candidate['election_id'] ?? '') == $electionOption['id'] ? 'selected' : '' ?>><?= esc($electionOption['title']) ?></option>
+                                    <option value="<?= esc($electionOption['id']) ?>" <?= strtolower((string) ($electionOption['status'] ?? '')) === 'open' ? 'disabled' : '' ?> <?= old('election_id', $candidate['election_id'] ?? '') == $electionOption['id'] ? 'selected' : '' ?>><?= esc($electionOption['title']) ?><?= strtolower((string) ($electionOption['status'] ?? '')) === 'open' ? ' (Open)' : '' ?></option>
                                 <?php endforeach; ?>
                             </select>
                         </div>
+
+                        <fieldset class="form-group">
+                            <legend>Eligible Voters</legend>
+                            <label>
+                                <input type="checkbox" name="eligible_all" value="1" <?= old('eligible_all', ! empty($eligibleAll) || $mode === 'create' ? '1' : '') === '1' ? 'checked' : '' ?>>
+                                All year levels
+                            </label>
+                            <div style="display:flex; flex-wrap:wrap; gap:0.75rem; margin-top:0.5rem;">
+                                <?php foreach ($yearLevels as $yearLevelRow): ?>
+                                    <?php $yearLevel = $yearLevelRow['year_level']; ?>
+                                    <label>
+                                        <input type="checkbox" name="eligible_year_levels[]" value="<?= esc($yearLevel) ?>" <?= in_array($yearLevel, old('eligible_year_levels', $eligibleYearLevels ?? []), true) ? 'checked' : '' ?>>
+                                        <?= esc($yearLevel) ?>
+                                    </label>
+                                <?php endforeach; ?>
+                            </div>
+                            <small class="text-muted">Clear “All year levels” to restrict voting to the selected groups.</small>
+                        </fieldset>
 
                         <div class="form-group">
                             <label for="photo">Photo</label>
@@ -105,4 +133,3 @@ $redirectTo = \Config\Services::request()->getGet('redirect_to');
     </div>
 </body>
 </html>
-

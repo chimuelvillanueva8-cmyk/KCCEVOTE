@@ -1,6 +1,7 @@
 <?php
 namespace App\Controllers\Admin;
 
+use App\Models\AuditLogModel;
 use App\Controllers\BaseController;
 use App\Models\DepartmentModel;
 use App\Models\CourseModel;
@@ -8,6 +9,25 @@ use App\Models\CourseModel;
 class Departments extends BaseController
 {
     protected $model;
+
+    private function getRequestData(): array
+    {
+        $post = $this->request->getPost();
+        if (! empty($post)) {
+            return $post;
+        }
+
+        try {
+            $json = $this->request->getJSON(true);
+            if (is_array($json)) {
+                return $json;
+            }
+        } catch (\Exception $e) {
+            return [];
+        }
+
+        return [];
+    }
 
     public function __construct()
     {
@@ -43,9 +63,8 @@ class Departments extends BaseController
 
     public function store()
     {
-        $data = $this->request->getPost();
+        $data = $this->getRequestData();
         $rules = [
-            'department_code' => 'required|is_unique[departments.department_code]',
             'department_name' => 'required',
         ];
 
@@ -54,11 +73,11 @@ class Departments extends BaseController
         }
 
         $this->model->insert([
-            'department_code' => strtoupper(trim($data['department_code'])),
             'department_name' => trim($data['department_name']),
             'status' => $data['status'] ?? 'Active',
         ]);
 
+        (new AuditLogModel())->record('CREATE', 'Created department ' . trim($data['department_name']) . '.');
         return $this->response->setJSON(['success' => true, 'message' => 'Department added successfully.']);
     }
 
@@ -70,9 +89,8 @@ class Departments extends BaseController
 
     public function update($id)
     {
-        $data = $this->request->getPost();
+        $data = $this->getRequestData();
         $rules = [
-            'department_code' => 'required',
             'department_name' => 'required',
         ];
 
@@ -80,18 +98,12 @@ class Departments extends BaseController
             return $this->response->setJSON(['success' => false, 'errors' => $this->validator->getErrors()]);
         }
 
-        // check uniqueness of code if changed
-        $existing = $this->model->where('department_code', $data['department_code'])->first();
-        if ($existing && $existing['id'] != $id) {
-            return $this->response->setJSON(['success' => false, 'errors' => ['department_code' => 'Department code must be unique.']]);
-        }
-
         $this->model->update($id, [
-            'department_code' => strtoupper(trim($data['department_code'])),
             'department_name' => trim($data['department_name']),
             'status' => $data['status'] ?? 'Active',
         ]);
 
+        (new AuditLogModel())->record('UPDATE', 'Updated department ' . trim($data['department_name']) . '.');
         return $this->response->setJSON(['success' => true, 'message' => 'Department updated successfully.']);
     }
 
@@ -104,7 +116,11 @@ class Departments extends BaseController
             return $this->response->setJSON(['success' => false, 'message' => 'This department has courses assigned to it. Please remove or deactivate the courses first.']);
         }
 
+        $department = $this->model->find($id);
         $this->model->delete($id);
+        if ($department) {
+            (new AuditLogModel())->record('DELETE', 'Deleted department ' . $department['department_name'] . '.');
+        }
         return $this->response->setJSON(['success' => true, 'message' => 'Department deleted.']);
     }
 
@@ -116,6 +132,7 @@ class Departments extends BaseController
         }
         $new = $dept['status'] === 'Active' ? 'Inactive' : 'Active';
         $this->model->update($id, ['status' => $new]);
+        (new AuditLogModel())->record('UPDATE', 'Changed department ' . $dept['department_name'] . ' status to ' . $new . '.');
         return $this->response->setJSON(['success' => true, 'status' => $new]);
     }
 }

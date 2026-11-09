@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="<?= esc(csrf_hash()) ?>">
     <title>Login - KEVS (KCC e-Voting System)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,9 +12,52 @@
     <link rel="stylesheet" href="<?= base_url('css/style.css') ?>">
     <link rel="stylesheet" href="<?= base_url('css/dashboard.css') ?>">
     <style>
+        body.dashboard-page {
+            position: relative;
+            isolation: isolate;
+            background: #0B2748 !important;
+        }
+
+        body.dashboard-page::before {
+            content: "";
+            position: fixed;
+            inset: -5px;
+            z-index: -1;
+            pointer-events: none;
+            background-image:
+                linear-gradient(90deg, rgba(2, 12, 39, 0.56) 0%, rgba(2, 15, 47, 0.36) 52%, rgba(2, 12, 39, 0.22) 100%),
+                linear-gradient(180deg, rgba(2, 12, 39, 0.16) 0%, rgba(2, 12, 39, 0.22) 58%, rgba(2, 12, 39, 0.62) 100%),
+                url("<?= base_url('images/homepage-campus-background.png') ?>");
+            background-position: center;
+            background-size: cover;
+            background-repeat: no-repeat;
+            filter: blur(3px);
+        }
+
+        .location-access-error {
+            color: #ff4d4f !important;
+        }
+        .student-id-error {
+            color: #ff4d4f !important;
+        }
+        .incorrect-password-error {
+            color: #ff4d4f !important;
+        }
+        .inactive-account-error {
+            color: #ff4d4f !important;
+        }
+        .invalid-credentials-error {
+            color: #ff4d4f !important;
+        }
+        .face-reenrollment-error {
+            color: #ff4d4f !important;
+            background: rgba(239, 68, 68, 0.14) !important;
+            border: 1px solid rgba(239, 68, 68, 0.55) !important;
+        }
+
         /* Form wrapper (original) */
         body.dashboard-page .container > .form-wrapper {
-            width: 344px !important;
+            width: min(100%, 344px) !important;
             max-width: 344px !important;
             min-height: 620px !important;
             padding: 1.4rem 1rem !important;
@@ -32,6 +76,129 @@
         body.dashboard-page .container > .form-wrapper .btn-admin {
             padding: 0.95rem 1.4rem !important;
             font-size: 1rem !important;
+        }
+
+        body.dashboard-page.login-page {
+            width: 100%;
+            height: 100vh;
+            height: 100dvh;
+            min-height: 0;
+            overflow: hidden;
+        }
+        body.dashboard-page.login-page > .container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            max-width: none;
+            height: 100%;
+            min-height: 0;
+            margin: 0;
+            padding: 12px;
+            overflow: hidden;
+        }
+        body.dashboard-page.login-page > .container > .form-wrapper {
+            width: min(100%, 300px) !important;
+            max-width: 300px !important;
+            min-height: 0 !important;
+            height: auto !important;
+            margin: 0 auto !important;
+            padding: 0.65rem 0.75rem !important;
+            overflow: hidden;
+        }
+        body.dashboard-page.login-page .logo-container {
+            margin-bottom: 0.35rem !important;
+        }
+        body.dashboard-page.login-page .logo-container > div {
+            margin-bottom: 0.2rem !important;
+        }
+        body.dashboard-page.login-page .logo-container img {
+            width: 42px !important;
+            height: 42px !important;
+        }
+        body.dashboard-page.login-page .main-title {
+            font-size: 1.35rem !important;
+        }
+        body.dashboard-page.login-page .subtitle {
+            font-size: 0.78rem !important;
+        }
+        body.dashboard-page.login-page .form-wrapper > h2 {
+            margin: 0.15rem 0 0.4rem;
+            font-size: 1.05rem;
+        }
+        body.dashboard-page.login-page .kevs-card {
+            padding: 10px;
+            border-radius: 12px;
+        }
+        body.dashboard-page.login-page .kevs-label {
+            margin-bottom: 3px;
+            font-size: 0.82rem;
+        }
+        body.dashboard-page.login-page .kevs-input {
+            padding: 8px 10px;
+            font-size: 0.82rem;
+        }
+        body.dashboard-page.login-page .password-field .kevs-input {
+            padding-left: 36px;
+        }
+        body.dashboard-page.login-page .password-control .kevs-input {
+            padding-right: 36px;
+        }
+        body.dashboard-page.login-page .password-control .eye-btn {
+            width: 34px !important;
+        }
+        body.dashboard-page.login-page .kevs-btn,
+        body.dashboard-page.login-page .kevs-scan {
+            min-height: 36px;
+            padding: 8px 12px;
+            font-size: 0.82rem;
+        }
+        body.dashboard-page.login-page .kevs-card form > div[style*="margin-bottom"] {
+            margin-bottom: 7px !important;
+        }
+        body.dashboard-page.login-page .kevs-card form > div[style*="margin-top"] {
+            margin-top: 8px !important;
+        }
+        body.dashboard-page.login-page .kevs-or {
+            gap: 8px;
+            margin: 6px 0;
+            font-size: 0.78rem;
+        }
+        body.dashboard-page.login-page .kevs-hint {
+            margin-top: 5px !important;
+            font-size: 0.7rem;
+            line-height: 1.35;
+        }
+        body.dashboard-page.login-page .kevs-card > div[style*="margin-top"] {
+            margin-top: 6px !important;
+            font-size: 0.78rem !important;
+            line-height: 1.3;
+        }
+        body.dashboard-page.login-page .kevs-card > div[style*="margin-top"] > div {
+            margin-top: 5px !important;
+            font-size: 0.72rem !important;
+        }
+        body.dashboard-page.login-page .kevs-card > div[style*="margin-top"] > div > div {
+            margin-top: 4px !important;
+        }
+
+        @media (max-height: 700px) {
+            body.dashboard-page.login-page > .container {
+                padding: 8px;
+            }
+            body.dashboard-page.login-page > .container > .form-wrapper {
+                padding: 0.55rem 0.8rem !important;
+            }
+        }
+        @media (max-height: 600px) {
+            body.dashboard-page.login-page > .container > .form-wrapper {
+                transform: scale(0.88);
+            }
+        }
+        @media (max-height: 520px) {
+            body.dashboard-page.login-page > .container > .form-wrapper {
+                transform: scale(0.76);
+            }
         }
 
         /* Premium Fintech Face Verification Styles */
@@ -183,10 +350,52 @@
         #faceVerificationContainer #mainStatus {
             color: #2D4A73 !important;
             font-size: 1rem !important;
+            transition: opacity 180ms ease, color 180ms ease;
+        }
+
+        #faceVerificationContainer #mainStatus.timer-time-up {
+            color: #dc2626 !important;
+            font-size: 2rem !important;
+            font-weight: 800 !important;
+            letter-spacing: 0.04em;
         }
 
         #faceVerificationContainer #subStatus {
             color: #64748b !important;
+            transition: opacity 180ms ease, color 180ms ease;
+        }
+
+        #faceVerificationContainer #countdownTimer {
+            color: #2D4A73;
+            font-size: 0.9rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 8px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        #faceVerificationContainer #progressTrack {
+            background: rgba(6, 182, 212, 0.1);
+            height: 8px;
+            border-radius: 999px;
+            overflow: hidden;
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            transition: box-shadow 250ms ease;
+        }
+
+        #faceVerificationContainer #progressTrack.timer-complete {
+            box-shadow: 0 0 16px rgba(220, 38, 38, 0.65);
+            animation: timer-complete-pulse 700ms ease-in-out infinite alternate;
+        }
+
+        @keyframes timer-complete-pulse {
+            from { box-shadow: 0 0 8px rgba(220, 38, 38, 0.4); }
+            to { box-shadow: 0 0 20px rgba(220, 38, 38, 0.8); }
+        }
+
+        #faceVerificationContainer #progressBar,
+        #faceVerificationContainer #glowRing {
+            transition: width 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
         }
 
         #faceVerificationContainer .face-frame-wrap {
@@ -223,9 +432,28 @@
         }
 
         #faceVerificationContainer #cancelBtn {
-            background: rgba(45, 74, 115, 0.08) !important;
-            color: #2D4A73 !important;
-            border-color: rgba(45, 74, 115, 0.2) !important;
+            background: #e2e8f0 !important;
+            color: #1e293b !important;
+            border-color: #cbd5e1 !important;
+        }
+
+        #faceVerificationContainer #cancelBtn:hover,
+        #faceVerificationContainer #cancelBtn:focus-visible {
+            background: #cbd5e1 !important;
+            color: #0f172a !important;
+            border-color: #94a3b8 !important;
+        }
+
+        #faceVerificationContainer #cancelBtn:focus-visible {
+            outline: 3px solid rgba(37, 99, 235, 0.45);
+            outline-offset: 2px;
+        }
+
+        #locationStatus.text-danger {
+            color: #dc3545 !important;
+        }
+        #locationStatus.text-success {
+            color: #22c55e !important;
         }
 
         @media (max-width: 480px) {
@@ -239,11 +467,22 @@
                 height: 244px !important;
             }
         }
+
+        @media (prefers-reduced-motion: reduce) {
+            #faceVerificationContainer #mainStatus,
+            #faceVerificationContainer #subStatus,
+            #faceVerificationContainer #progressTrack,
+            #faceVerificationContainer #progressBar,
+            #faceVerificationContainer #glowRing {
+                transition: none !important;
+                animation: none !important;
+            }
+        }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script src="<?= base_url('js/face-api.min.js') ?>"></script>
     <script src="<?= base_url('js/main.js') ?>" defer></script>
 </head>
-<body class="dashboard-page">
+<body class="dashboard-page <?= ($action === 'student' && isset($verify) && $verify === 'face') ? 'face-verify-page' : 'login-page' ?>">
     <div class="container">
         <?php $faceVerify = ($action === 'student' && isset($verify) && $verify === 'face'); ?>
         <div class="form-wrapper<?= $faceVerify ? ' face-verify-mode' : '' ?>">
@@ -260,7 +499,7 @@
             <?php endif; ?>
             
             <?php if ($error): ?>
-                <div class="alert alert-danger"><?php echo htmlspecialchars($error); ?></div>
+                <div class="alert alert-danger<?= $error === 'Access denied: your location is outside the permitted campus access radius.' ? ' location-access-error' : '' ?><?= $error === 'Student ID not found.' ? ' student-id-error' : '' ?><?= $error === 'Incorrect password. Please try again.' ? ' incorrect-password-error' : '' ?><?= $error === 'Your student account is currently inactive. Please contact the administrator.' ? ' inactive-account-error' : '' ?><?= $error === 'Invalid credentials' ? ' invalid-credentials-error' : '' ?><?= $error === 'Face verification needs to be re-enrolled by an administrator. Please use your password to log in.' ? ' face-reenrollment-error' : '' ?>"><?php echo htmlspecialchars($error); ?></div>
             <?php endif; ?>
 
             <?php if ($success): ?>
@@ -277,6 +516,7 @@
                     .password-field .kevs-input { padding-left: 48px; }
                     .kevs-label { color: #F5C542; font-weight: 600; margin-bottom: 6px; display:block; }
                     .kevs-hint { color: #B8C7D9; font-size: 0.9rem; margin-top:8px; }
+                    .kevs-btn, .kevs-scan { display:inline-flex; align-items:center; justify-content:center; gap:8px; box-sizing:border-box; min-height:44px; line-height:1.25; text-align:center; }
                     .kevs-btn { background: linear-gradient(90deg, #1266D6 0%, #1677FF 100%); color:#fff; border:none; padding:12px 18px; border-radius:10px; font-weight:700; }
                     .kevs-scan { background: #F5C542; color:#061A33; border:none; padding:12px 18px; border-radius:10px; font-weight:700; }
                     .kevs-or { display:flex;align-items:center;gap:12px;margin:16px 0;color:#B8C7D9 }
@@ -289,6 +529,7 @@
                 <div class="kevs-card">
                     <?php if ($action === 'admin'): ?>
                         <form id="adminLoginForm" action="<?= base_url('login/attempt?action=' . htmlspecialchars($action)) ?>" method="POST">
+                            <?= csrf_field() ?>
                             <div style="margin-bottom:12px">
                                 <label class="kevs-label">Username</label>
                                 <input class="kevs-input" type="text" name="username" id="loginUsername" placeholder="Enter your username" required autofocus />
@@ -310,6 +551,7 @@
                         </form>
                     <?php else: ?>
                         <form id="studentLoginForm" action="<?= base_url('login/attempt?action=' . htmlspecialchars($action)) ?>" method="POST">
+                                <?= csrf_field() ?>
                                 <div style="margin-bottom:12px">
                                     <label class="kevs-label">Student ID Number</label>
                                     <input class="kevs-input" type="text" name="username" id="loginStudentId" placeholder="Enter your student ID number" required autofocus inputmode="numeric" pattern="\d*" />
@@ -338,6 +580,7 @@
 
                         <!-- Face start form posts student_id to server to initiate face verify session -->
                         <form id="startFaceForm" action="<?= base_url('login/face-start') ?>" method="POST">
+                            <?= csrf_field() ?>
                             <input type="hidden" name="student_id" id="faceStudentId" />
                             <div style="display:flex;gap:10px;align-items:center;">
                                 <button type="button" id="scanFaceBtn" class="kevs-scan" style="flex:1;"><i class="bi bi-camera-video-fill" style="margin-right:8px"></i> Scan Face</button>
@@ -536,7 +779,7 @@
                         <!-- Progress Indicator -->
                         <div id="progressContainer" style="
                             width: 100%;
-                            max-width: 200px;
+                            max-width: none;
                             margin-bottom: 30px;
                             display: none;
                         ">
@@ -568,19 +811,14 @@
                                     animation: pulse-dot 1.5s ease-in-out infinite 0.6s;
                                 "></div>
                             </div>
-                            <div style="
-                                background: rgba(6, 182, 212, 0.1);
-                                height: 4px;
-                                border-radius: 2px;
-                                overflow: hidden;
-                                border: 1px solid rgba(6, 182, 212, 0.3);
-                            ">
+                            <div id="countdownTimer" role="timer" aria-live="off">30 seconds remaining</div>
+                            <div id="progressTrack" role="progressbar" aria-label="Face verification time elapsed" aria-valuemin="0" aria-valuemax="30" aria-valuenow="0">
                                 <div id="progressBar" style="
                                     height: 100%;
                                     width: 0%;
-                                    background: linear-gradient(90deg, #06b6d4 0%, #22c55e 100%);
-                                    border-radius: 2px;
-                                    transition: width 0.3s ease;
+                                    background: #22c55e;
+                                    border-radius: 999px;
+                                    transition: none;
                                 "></div>
                             </div>
                         </div>
@@ -689,13 +927,14 @@
                 <script>
                     // Global variables for fast face verification
                     let modelsLoaded = false;
+                    let descriptorLoaded = false;
+                    let modelLoadError = null;
                     let detectionInterval = null;
-                    let storedDescriptor = null;
-                    let storedFacePayload = null;
+                    let challengeTimeoutTimer = null;
+                    let challengeProgressFrame = null;
+                    let timerAudioContext = null;
                     let video = null;
                     let canvas = null;
-                    let blinkCount = 0;
-                    let eyeClosedFrames = 0;
                     
                     function showFaceVerificationUI() {
                         const container = document.getElementById('faceVerificationContainer');
@@ -704,8 +943,16 @@
                     
                     function closeFaceVerification() {
                         if (detectionInterval) {
-                            clearInterval(detectionInterval);
+                            clearTimeout(detectionInterval);
                             detectionInterval = null;
+                        }
+                        if (challengeTimeoutTimer) {
+                            clearTimeout(challengeTimeoutTimer);
+                            challengeTimeoutTimer = null;
+                        }
+                        if (challengeProgressFrame !== null) {
+                            cancelAnimationFrame(challengeProgressFrame);
+                            challengeProgressFrame = null;
                         }
                         const videoEl = document.getElementById('video');
                         if (videoEl && videoEl.srcObject) {
@@ -717,7 +964,8 @@
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
-                                'X-Requested-With': 'XMLHttpRequest'
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
                             }
                         }).then(() => {
                             window.location.href = '<?= base_url('login?action=student') ?>';
@@ -726,34 +974,62 @@
                         });
                     }
                     
-                    // Load face-api models
-                    const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.10/model/';
+                    // Load face-api models from the bundled assets.
+                    const MODEL_URL = '<?= base_url('js/models/') ?>';
+                    const campusLocationRequired = <?= json_encode($campus_location_required ?? false) ?>;
+                    const faceLoginLocation = campusLocationRequired
+                        ? new Promise(resolve => {
+                            const latitudeInput = document.getElementById('latitude');
+                            const longitudeInput = document.getElementById('longitude');
+                            const locationStatus = document.getElementById('locationStatus');
+                            const fail = () => {
+                                if (locationStatus) {
+                                    locationStatus.textContent = 'Campus location is required for face login.';
+                                    locationStatus.className = 'mt-2 small text-danger';
+                                }
+                                resolve({ error: 'Campus location is required for face login.' });
+                            };
+
+                            if (!navigator.geolocation) {
+                                fail();
+                                return;
+                            }
+
+                            navigator.geolocation.getCurrentPosition(position => {
+                                if (latitudeInput) latitudeInput.value = position.coords.latitude;
+                                if (longitudeInput) longitudeInput.value = position.coords.longitude;
+                                if (locationStatus) {
+                                    locationStatus.textContent = '✓ Campus location detected.';
+                                    locationStatus.className = 'mt-2 small text-success';
+                                }
+                                resolve({
+                                    latitude: position.coords.latitude,
+                                    longitude: position.coords.longitude
+                                });
+                            }, fail, {
+                                enableHighAccuracy: true,
+                                timeout: 8000,
+                                maximumAge: 0
+                            });
+                        })
+                        : Promise.resolve({ latitude: null, longitude: null });
                     console.log('Loading face-api models...');
-                    Promise.all([
+                    const faceModelsReady = Promise.all([
                         faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
                         faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
                         faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
                     ]).then(() => {
                         modelsLoaded = true;
-                        storedDescriptor = null;
-                        try {
-                            const descriptor = <?php echo json_encode(session()->get('temp_face_descriptor')); ?>;
-                            if (descriptor) {
-                                const parsed = typeof descriptor === 'string' ? JSON.parse(descriptor) : descriptor;
-                                storedFacePayload = parsed;
-                                if (parsed && Array.isArray(parsed.descriptor)) {
-                                    storedDescriptor = new Float32Array(parsed.descriptor);
-                                } else if (Array.isArray(parsed)) {
-                                    storedDescriptor = new Float32Array(parsed);
-                                }
-                            }
-                        } catch (e) {
-                            console.warn('Could not load stored descriptor:', e.message);
-                        }
-                        console.log('✓ Face-api models and descriptor loaded');
+                        descriptorLoaded = true;
+                        console.log('✓ Face-api models loaded');
                     }).catch(err => {
                         console.error('✗ Failed to load models:', err);
                         modelsLoaded = false;
+                        modelLoadError = err;
+                        const mainStatus = document.getElementById('mainStatus');
+                        const subStatus = document.getElementById('subStatus');
+                        if (mainStatus) mainStatus.textContent = 'Face detection could not start';
+                        if (subStatus) subStatus.textContent = 'Refresh the page and try again.';
                     });
                     
                     // Forward declare startCamera
@@ -764,9 +1040,30 @@
                         const mainStatus = document.getElementById('mainStatus');
                         const subStatus = document.getElementById('subStatus');
                         const progressContainer = document.getElementById('progressContainer');
+
+                        if (!timerAudioContext) {
+                            const AudioContext = window.AudioContext || window.webkitAudioContext;
+                            if (AudioContext) {
+                                try {
+                                    timerAudioContext = new AudioContext();
+                                } catch (err) {
+                                    console.warn('Could not initialize timer notification sound:', err);
+                                }
+                            }
+                        }
+
+                        await faceModelsReady;
                         
+                        if (modelLoadError) {
+                            alert('Face detection could not start. Please refresh the page and try again.');
+                            return;
+                        }
                         if (!modelsLoaded) {
                             alert('Face detection models are still loading. Please wait and try again.');
+                            return;
+                        }
+                        if (!descriptorLoaded) {
+                            alert('Face registration data is invalid. Please register your face again.');
                             return;
                         }
                         
@@ -784,8 +1081,9 @@
                             startBtn.style.display = 'none';
                             progressContainer.style.display = 'block';
                             
-                            mainStatus.textContent = '🔐 STRICT VERIFICATION MODE';
-                            subStatus.textContent = 'Position face in animated frame (NO PHOTOS)...';
+                            mainStatus.textContent = 'Verifying your face';
+                            subStatus.textContent = 'Center your face in the frame. Follow the prompt to smile once.';
+                            document.getElementById('countdownTimer').textContent = 'Preparing 30-second smile check...';
 
                             console.log('✓ Camera started - STRICT VERIFICATION WITH SPOOF DETECTION');
                             
@@ -806,24 +1104,39 @@
                     // Global challenge variables
                     let currentChallenge = null;
                     let challengeStartTime = 0;
-                    let challengeTimeoutId = null;
                     let faceMotionHistory = [];  // Track face movements
                     let previousLandmarks = null; // Track motion between frames
-                    let consecutiveChallengeFailures = 0;  // Track failed challenges
-                    
-                    // Get random challenge
-                    function getRandomChallenge() {
-                        const challenges = ['blink', 'smile'];
-                        return challenges[Math.floor(Math.random() * challenges.length)];
-                    }
-                    
-                    // Get challenge description
-                    function getChallengeText(challenge) {
-                        const texts = {
-                            'blink': '👁️ Blink once',
-                            'smile': '😊 Smile naturally'
+                    let smileState = null;
+
+
+                    function playTimerCompleteSound() {
+                        if (!timerAudioContext) {
+                            console.warn('Timer notification sound is unavailable: Web Audio is not supported.');
+                            return;
+                        }
+
+                        const playTone = () => {
+                            const oscillator = timerAudioContext.createOscillator();
+                            const gain = timerAudioContext.createGain();
+                            const now = timerAudioContext.currentTime;
+                            oscillator.type = 'sine';
+                            oscillator.frequency.setValueAtTime(880, now);
+                            gain.gain.setValueAtTime(0.0001, now);
+                            gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+                            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.35);
+                            oscillator.connect(gain);
+                            gain.connect(timerAudioContext.destination);
+                            oscillator.start(now);
+                            oscillator.stop(now + 0.36);
                         };
-                        return texts[challenge] || 'Complete challenge';
+
+                        if (timerAudioContext.state === 'suspended') {
+                            timerAudioContext.resume().then(playTone).catch(err => {
+                                console.warn('Could not play timer notification sound:', err);
+                            });
+                        } else {
+                            playTone();
+                        }
                     }
                     
                     // STRICT: Calculate face motion between frames
@@ -882,10 +1195,10 @@
                             console.warn('❌ Face too small - possible ID photo or screenshot');
                         }
                         
-                        // Check detection score (low score = less confident = fake)
-                        if (detections.detection.score < 0.75) {
-                            spoofScore += 0.4;  // Increased threshold and penalty
-                            console.warn('❌ Low detection confidence:', detections.detection.score);
+                        // Camera angle and lighting can lower confidence for a real face.
+                        if (detections.detection.score < 0.55) {
+                            spoofScore += 0.25;
+                            console.info('Face detection confidence is low; checking the live challenge carefully.');
                         }
                         
                         // Check for frozen face (no motion = photo/screenshot)
@@ -896,23 +1209,7 @@
                             }
                         }
                         
-                        // Check eye symmetry (prints/photos often have artifacts)
-                        if (detections.landmarks) {
-                            const landmarks = detections.landmarks.positions;
-                            const leftEye = landmarks.slice(36, 42);
-                            const rightEye = landmarks.slice(42, 48);
-                            const leftEAR = calculateEyeAspectRatio(leftEye);
-                            const rightEAR = calculateEyeAspectRatio(rightEye);
-                            
-                            // Both eyes should be similar (not perfectly identical)
-                            const earDiff = Math.abs(leftEAR - rightEAR);
-                            if (earDiff > 0.15) {  // Stricter symmetry requirement
-                                spoofScore += 0.25;  // Increased penalty
-                                console.warn('❌ Eye asymmetry detected - possible fake');
-                            }
-                        }
-                        
-                        console.log('Spoof Score: ' + spoofScore.toFixed(2));
+                        console.log('Face quality score: ' + spoofScore.toFixed(2));
                         return spoofScore;
                     }
                     
@@ -930,25 +1227,27 @@
                         
                         mainStatus.textContent = 'Detecting your face...';
                         subStatus.textContent = 'Position face in frame...';
+                        progressBar.style.width = '0%';
+                        document.getElementById('progressTrack').setAttribute('aria-valuenow', '0');
+                        document.getElementById('countdownTimer').textContent = 'Preparing 30-second smile check...';
                         
-                        const maxFaceDetectionTime = 5000;
-                        let detectionTimeout = 0;
-                        let faceDetectedInFirstFrame = false;
-                        let verificationState = 'detecting_face';
+                        const maxFaceDetectionTime = 8000;
+                        const detectionStartedAt = Date.now();
+                        let faceDetectionStarted = false;
                         faceMotionHistory = [];
                         previousLandmarks = null;
 
                         console.log('Starting STRICT face verification...');
                         
-                        return new Promise(async (resolve) => {
-                            detectionInterval = setInterval(async () => {
-                                detectionTimeout += 15;
-                                
+                        return new Promise((resolve) => {
+                            const detectFace = async () => {
                                 try {
-                                    if (!modelsLoaded || !video) return;
+                                    if (!modelsLoaded || !video || !video.videoWidth) {
+                                        detectionInterval = setTimeout(detectFace, 100);
+                                        return;
+                                    }
 
-                                    const progress = Math.min(100, (detectionTimeout / maxFaceDetectionTime) * 100);
-                                    progressBar.style.width = progress + '%';
+                                    const detectionTimeout = Date.now() - detectionStartedAt;
 
                                     const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({
                                         inputSize: 320,
@@ -960,24 +1259,25 @@
                                         const spoofScore = detectSpoof(detections);
                                         if (spoofScore > 0.35) {  // Much stricter threshold
                                             console.warn('❌ STRICT SPOOF DETECTION TRIGGERED! Score:', spoofScore);
-                                            clearInterval(detectionInterval);
+                                            clearTimeout(detectionInterval);
+                                            detectionInterval = null;
                                             mainStatus.textContent = '⛔ Spoof attempt blocked';
-                                            subStatus.textContent = 'Only real faces allowed - Photos/Screens detected';
+                                            subStatus.textContent = 'Please use the live camera and try again.';
                                             glowRing.style.borderColor = '#ef4444';
                                             glowRing.style.boxShadow = '0 0 80px rgba(239, 68, 68, 0.9)';
                                             
                                             setTimeout(() => {
-                                                alert('❌ SECURITY ALERT!\n\nSpoof attempt detected:\n- Static photo or frozen screenshot\n- Artificial face characteristics\n\nOnly real, moving human faces are allowed.\n\nPlease try again with a real face.');
                                                 retryFaceVerification();
-                                            }, 1000);
+                                            }, 1200);
                                             resolve();
                                             return;
                                         }
 
-                                        if (!faceDetectedInFirstFrame) {
-                                            faceDetectedInFirstFrame = true;
+                                        if (!faceDetectionStarted) {
+                                            faceDetectionStarted = true;
                                             console.log('✓ Real human face detected (passed spoof checks)');
-                                            clearInterval(detectionInterval);
+                                            clearTimeout(detectionInterval);
+                                            detectionInterval = null;
                                             
                                             // Start challenge verification
                                             setTimeout(() => {
@@ -986,18 +1286,17 @@
                                             resolve();
                                             return;
                                         }
-                                    } else {
-                                        if (faceDetectedInFirstFrame && detectionTimeout > 500) {
-                                            mainStatus.textContent = '⚠️ Face out of frame';
-                                            subStatus.textContent = 'Position your face inside the frame';
-                                        }
+                                    } else if (detectionTimeout > 500) {
+                                        mainStatus.textContent = 'Looking for your face...';
+                                        subStatus.textContent = 'Center your face in the frame and look toward the camera.';
                                     }
 
                                     if (detectionTimeout >= maxFaceDetectionTime) {
-                                        clearInterval(detectionInterval);
-                                        mainStatus.textContent = 'No face detected';
-                                        subStatus.textContent = 'Retrying...';
-                                        console.warn('Face detection timeout - auto retrying');
+                                        clearTimeout(detectionInterval);
+                                        detectionInterval = null;
+                                        mainStatus.textContent = 'We could not see your face yet';
+                                        subStatus.textContent = 'Adjust your position or lighting. Trying again...';
+                                        console.info('Face detection timed out; restarting the live check.');
                                         
                                         setTimeout(() => {
                                             retryFaceVerification();
@@ -1007,158 +1306,215 @@
 
                                 } catch (err) {
                                     console.error('Detection error:', err);
+                                    mainStatus.textContent = 'Camera check paused briefly';
+                                    subStatus.textContent = 'Keep looking at the camera while detection resumes.';
                                 }
-                            }, 15);
+                                if (detectionInterval !== null || !faceDetectionStarted) {
+                                    detectionInterval = setTimeout(detectFace, 100);
+                                }
+                            };
+                            detectionInterval = setTimeout(detectFace, 0);
                         });
                     }
                     
-                    // STRICT: Start challenge-based verification with motion requirement
+                    // Require one natural smile before matching the registered face.
                     async function startChallengeVerification(faceDescriptor) {
                         const mainStatus = document.getElementById('mainStatus');
                         const subStatus = document.getElementById('subStatus');
                         const progressBar = document.getElementById('progressBar');
+                        const progressTrack = document.getElementById('progressTrack');
+                        const countdownTimer = document.getElementById('countdownTimer');
                         const glowRing = document.getElementById('glowRing');
                         
-                        currentChallenge = getRandomChallenge();
-                        const challengeText = getChallengeText(currentChallenge);
+                        currentChallenge = 'smile';
                         
-                        mainStatus.textContent = '✓ Face verified';
-                        subStatus.textContent = 'Complete challenge: ' + challengeText;
+                        mainStatus.textContent = 'Liveness check · Smile once';
                         progressBar.style.width = '0%';
                         
                         console.log('🔐 Challenge: ' + currentChallenge);
                         
                         challengeStartTime = Date.now();
-                        const challengeTimeout = 6000; // 6 seconds to complete challenge
+                        const challengeTimeout = 30000;
                         let challengeCompleted = false;
-                        let challengeMotionDetected = false;
-                        let motionRequiredCount = 0;
+                        let challengeResolved = false;
                         faceMotionHistory = [];
                         previousLandmarks = null;
+                        resetChallengeDetector();
                         
                         return new Promise((resolve) => {
-                            detectionInterval = setInterval(async () => {
+                            progressBar.style.transition = 'none';
+                            progressBar.style.width = '0%';
+                            let displayedSecondsRemaining = null;
+                            let displayedProgressValue = -1;
+                            const updateProgress = () => {
+                                if (challengeResolved) {
+                                    challengeProgressFrame = null;
+                                    return;
+                                }
+                                const elapsed = Math.min(Date.now() - challengeStartTime, challengeTimeout);
+                                const progress = (elapsed / challengeTimeout) * 100;
+                                const secondsRemaining = Math.ceil((challengeTimeout - elapsed) / 1000);
+                                progressBar.style.width = `${progress}%`;
+                                progressBar.style.background = progress < 50
+                                    ? '#22c55e'
+                                    : progress < 80
+                                        ? '#eab308'
+                                        : '#ef4444';
+                                if (secondsRemaining !== displayedSecondsRemaining) {
+                                    displayedSecondsRemaining = secondsRemaining;
+                                    countdownTimer.textContent = `${secondsRemaining} ${secondsRemaining === 1 ? 'second' : 'seconds'} remaining`;
+                                }
+                                const progressValue = Math.floor(progress / 100 * 30);
+                                if (progressValue !== displayedProgressValue) {
+                                    displayedProgressValue = progressValue;
+                                    progressTrack.setAttribute('aria-valuenow', String(progressValue));
+                                }
+                                if (progress < 100) {
+                                    challengeProgressFrame = requestAnimationFrame(updateProgress);
+                                } else {
+                                    challengeProgressFrame = null;
+                                }
+                            };
+                            challengeProgressFrame = requestAnimationFrame(updateProgress);
+
+                            challengeTimeoutTimer = setTimeout(() => {
+                                challengeTimeoutTimer = null;
+                                if (challengeResolved) return;
+                                challengeResolved = true;
+                                if (challengeProgressFrame !== null) {
+                                    cancelAnimationFrame(challengeProgressFrame);
+                                    challengeProgressFrame = null;
+                                }
+                                clearTimeout(detectionInterval);
+                                detectionInterval = null;
+                                progressBar.style.width = '100%';
+                                progressBar.style.background = '#ef4444';
+                                countdownTimer.textContent = '0 seconds remaining';
+                                progressTrack.setAttribute('aria-valuenow', '30');
+                                progressTrack.classList.add('timer-complete');
+                                mainStatus.textContent = "TIME'S UP!";
+                                mainStatus.classList.add('timer-time-up');
+                                subStatus.textContent = 'Returning to student login...';
+                                console.info('Smile check timed out after 30 seconds; returning to login.');
+                                playTimerCompleteSound();
+                                resolve();
+                                setTimeout(closeFaceVerification, 1500);
+                            }, challengeTimeout);
+
+                            const checkChallenge = async () => {
                                 const elapsed = Date.now() - challengeStartTime;
-                                const progress = Math.min(100, (elapsed / challengeTimeout) * 100);
-                                progressBar.style.width = progress + '%';
+                                if (challengeResolved) return;
                                 
                                 try {
-                                    if (!modelsLoaded || !video) return;
+                                    if (!modelsLoaded || !video || !video.videoWidth) {
+                                        detectionInterval = setTimeout(checkChallenge, 60);
+                                        return;
+                                    }
                                     
                                     const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({
                                         inputSize: 320,
                                         scoreThreshold: 0.5
                                     })).withFaceLandmarks();
+                                    if (challengeResolved) return;
                                     
                                     if (detections && detections.landmarks && !challengeCompleted) {
-                                        // Check for motion (not frozen)
-                                        if (detections.landmarks.positions && previousLandmarks) {
-                                            const motion = calculateFaceMotion(detections.landmarks.positions, previousLandmarks);
-                                            if (motion > 1.2) {  // Strict motion requirement
-                                                challengeMotionDetected = true;
-                                                motionRequiredCount++;
-                                            }
-                                        }
                                         previousLandmarks = detections.landmarks.positions;
-                                        
                                         let completed = false;
                                         
-                                        if (currentChallenge === 'blink') {
-                                            completed = detectBlinkTwice(detections.landmarks.positions);
-                                        } else if (currentChallenge === 'smile') {
+                                        if (currentChallenge === 'smile') {
                                             completed = detectSmile(detections.landmarks.positions);
+                                            if (smileState && smileState.baseline !== null && !smileState.prompted) {
+                                                smileState.prompted = true;
+                                                subStatus.textContent = 'Now smile naturally and hold it briefly.';
+                                            }
                                         }
                                         
-                                        // Require sufficient motion during challenge
-                                        if (completed && motionRequiredCount > 3) {  // Strict motion requirement
+                                        if (completed) {
+                                            console.log('✓ Liveness challenge completed:', currentChallenge);
                                             challengeCompleted = true;
-                                            consecutiveChallengeFailures = 0;  // Reset failure counter on success
-                                            console.log('✓ Challenge completed: ' + currentChallenge);
-                                            clearInterval(detectionInterval);
-                                            mainStatus.textContent = '✓ Challenge verified';
-                                            subStatus.textContent = 'Matching identity...';
+                                            challengeResolved = true;
+                                            if (challengeProgressFrame !== null) {
+                                                cancelAnimationFrame(challengeProgressFrame);
+                                                challengeProgressFrame = null;
+                                            }
+                                            clearTimeout(detectionInterval);
+                                            detectionInterval = null;
+                                            clearTimeout(challengeTimeoutTimer);
+                                            challengeTimeoutTimer = null;
+                                            mainStatus.textContent = '✓ Smile detected';
+                                            subStatus.textContent = 'Matching your registered face...';
+                                            progressBar.style.transition = 'width 180ms ease';
                                             progressBar.style.width = '100%';
-                                            
-                                            // Get fresh descriptor for strict matching
+
                                             const freshDetections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({
                                                 inputSize: 320,
                                                 scoreThreshold: 0.5
                                             })).withFaceLandmarks().withFaceDescriptor();
-                                            
-                                            setTimeout(() => {
-                                                if (freshDetections && freshDetections.descriptor) {
-                                                    performStrictFaceMatch(freshDetections.descriptor);
-                                                } else {
-                                                    performStrictFaceMatch(faceDescriptor);
-                                                }
-                                                resolve();
-                                            }, 800);
-                                            return;
-                                        } else if (completed && motionRequiredCount <= 5) {
-                                            console.warn('⚠️ Challenge detected but insufficient motion - possible spoof');
-                                        }
-                                    }
-                                    
-                                    if (elapsed >= challengeTimeout) {
-                                        clearInterval(detectionInterval);
-                                        if (!challengeCompleted) {
-                                            consecutiveChallengeFailures++;  // Increment failure counter
-                                            console.warn('⚠️ Challenge failed - attempt ' + consecutiveChallengeFailures + ' of 2');
-                                            
-                                            if (consecutiveChallengeFailures >= 2) {
-                                                // After 2 failures, require re-login
-                                                mainStatus.textContent = '❌ 2 challenges failed';
-                                                subStatus.textContent = 'Redirecting to login...';
-                                                console.warn('❌ 2 consecutive challenges failed - returning to login');
-                                                
-                                                setTimeout(() => {
-                                                    alert('❌ VERIFICATION FAILED!\n\n2 unsuccessful challenge attempts.\n\nPlease log in again with your username and password.');
-                                                    closeFaceVerification();
-                                                }, 1500);
+
+                                            if (freshDetections && freshDetections.descriptor) {
+                                                await performStrictFaceMatch(freshDetections.descriptor);
                                             } else {
-                                                mainStatus.textContent = '⏱️ Challenge timeout (' + consecutiveChallengeFailures + '/2)';
-                                                subStatus.textContent = 'Retrying...';
-                                                console.warn('Challenge timeout - insufficient motion or challenge not completed');
-                                                
-                                                setTimeout(() => {
-                                                    retryFaceVerification();
-                                                }, 500);
+                                                await performStrictFaceMatch(faceDescriptor);
                                             }
+                                            resolve();
+                                            return;
                                         }
-                                        resolve();
+                                    } else if (!detections && elapsed > 500) {
+                                        mainStatus.textContent = 'Keep your face in view';
+                                        subStatus.textContent = 'Center your face in the frame to continue.';
                                     }
                                     
                                 } catch (err) {
+                                    if (challengeResolved) return;
                                     console.error('Challenge error:', err);
+                                    mainStatus.textContent = 'Still checking your face...';
+                                    subStatus.textContent = 'Keep looking at the camera.';
                                 }
-                            }, 15);
+                                if (!challengeResolved) {
+                                    detectionInterval = setTimeout(checkChallenge, 60);
+                                }
+                            };
+                            detectionInterval = setTimeout(checkChallenge, 0);
                         });
                     }
+
+                    function resetChallengeDetector() {
+                        smileState = {
+                            baselineSamples: [],
+                            baseline: null,
+                            confirmations: 0,
+                            prompted: false
+                        };
+                        previousLandmarks = null;
+                        const statusElement = document.getElementById('subStatus');
+                        if (statusElement) statusElement.textContent = 'Relax your face for a moment.';
+                    }
                     
-                    // Blink detection - requires single eye closure
-                    function detectBlinkTwice(landmarks) {
-                        const leftEye = landmarks.slice(36, 42);
-                        const rightEye = landmarks.slice(42, 48);
-                        const leftEAR = calculateEyeAspectRatio(leftEye);
-                        const rightEAR = calculateEyeAspectRatio(rightEye);
-                        const avgEAR = (leftEAR + rightEAR) / 2;
-                        
-                        // Smooth threshold for blink detection
-                        const blink_threshold = 0.25;  // Relaxed for smooth detection
-                        
-                        if (avgEAR < blink_threshold) {
-                            window.blinkDetectionCounter = (window.blinkDetectionCounter || 0) + 1;
-                            // Quick blink detection (2 frames)
-                            if (window.blinkDetectionCounter >= 2) {
-                                window.blinkDetectionCounter = 0;
-                                console.log('✓ Blink detected');
-                                return true;
+                    function detectSmile(landmarks) {
+                        if (!Array.isArray(landmarks) || landmarks.length < 58 || !smileState) return false;
+                        const faceWidth = Math.hypot(landmarks[16].x - landmarks[0].x, landmarks[16].y - landmarks[0].y);
+                        if (!Number.isFinite(faceWidth) || faceWidth < 1) return false;
+
+                        const mouthWidth = Math.hypot(landmarks[54].x - landmarks[48].x, landmarks[54].y - landmarks[48].y);
+                        const mouthCenterY = (landmarks[51].y + landmarks[57].y) / 2;
+                        const mouthCornerY = (landmarks[48].y + landmarks[54].y) / 2;
+                        const smileScore = mouthWidth / faceWidth + Math.max(0, (mouthCenterY - mouthCornerY) / faceWidth);
+
+                        if (smileState.baseline === null) {
+                            smileState.baselineSamples.push(smileScore);
+                            if (smileState.baselineSamples.length >= 5) {
+                                smileState.baseline = smileState.baselineSamples
+                                    .slice(-7)
+                                    .reduce((sum, value) => sum + value, 0) / Math.min(7, smileState.baselineSamples.length);
                             }
-                        } else if (avgEAR > 0.30) {  // Eyes clearly open
-                            if (window.blinkDetectionCounter > 0 && window.blinkDetectionCounter < 2) {
-                                // Reset if blink was too short
-                                window.blinkDetectionCounter = 0;
-                            }
+                            return false;
+                        }
+
+                        const smileThreshold = Math.max(0.38, smileState.baseline + 0.015);
+                        smileState.confirmations = smileScore > smileThreshold ? smileState.confirmations + 1 : 0;
+                        if (smileState.confirmations >= 2) {
+                            console.log('✓ Natural smile detected');
+                            return true;
                         }
                         return false;
                     }
@@ -1186,24 +1542,6 @@
                         }
                     }
                     
-                    // Smile detection - relaxed
-                    function detectSmile(landmarks) {
-                        const mouthLeft = landmarks[48];
-                        const mouthRight = landmarks[54];
-                        const mouthTop = landmarks[51];
-                        const mouthBottom = landmarks[57];
-                        
-                        const mouthWidth = Math.abs(mouthRight.x - mouthLeft.x);
-                        const mouthHeight = Math.abs(mouthBottom.y - mouthTop.y);
-                        
-                        // Strict threshold for smile detection
-                        const smileRatio = mouthWidth / (mouthHeight + 0.1);
-                        const smiled = smileRatio > 3.5;  // Strict smile requirement
-                        
-                        if (smiled) console.log('✓ Smile detected - ratio:', smileRatio.toFixed(2));
-                        return smiled;
-                    }
-                    
                     // Head tilt up detection - relaxed
                     function detectHeadTilt(landmarks, direction) {
                         const nose = landmarks[30];
@@ -1224,62 +1562,45 @@
                         return false;
                     }
                     
-                    function calculateEyeAspectRatio(eye) {
-                        const A = Math.hypot(eye[1].x - eye[5].x, eye[1].y - eye[5].y);
-                        const B = Math.hypot(eye[2].x - eye[4].x, eye[2].y - eye[4].y);
-                        const C = Math.hypot(eye[0].x - eye[3].x, eye[0].y - eye[3].y);
-                        return (A + B) / (2.0 * C);
-                    }
-                    
                     async function verifyFaceWithFaceApi(currentDescriptor) {
-                        if (!storedDescriptor) {
-                            throw new Error('No registered face descriptor found');
+                        const location = await faceLoginLocation;
+                        if (location.error) {
+                            throw new Error(location.error);
                         }
 
-                        const distance = faceapi.euclideanDistance(currentDescriptor, storedDescriptor);
-                        const strictThreshold = 0.35;
-                        return { success: distance < strictThreshold, distance };
+                        const response = await fetch('<?= base_url('login/face-verify') ?>', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                            },
+                            body: JSON.stringify({
+                                face_descriptor: JSON.stringify(Array.from(currentDescriptor)),
+                                latitude: location.latitude,
+                                longitude: location.longitude
+                            })
+                        });
+                        const result = await response.json();
+                        return { success: response.ok && result.success, message: result.message };
                     }
 
                     async function performStrictFaceMatch(currentDescriptor) {
                         const mainStatus = document.getElementById('mainStatus');
                         const subStatus = document.getElementById('subStatus');
-                        const successContainer = document.getElementById('successContainer');
                         const glowRing = document.getElementById('glowRing');
 
                         try {
                             const matchResult = await verifyFaceWithFaceApi(currentDescriptor);
-                            console.log('Face match result:', matchResult);
-
-                                if (matchResult.success) {
+                            if (matchResult.success) {
                                 glowRing.style.animation = 'none';
                                 glowRing.style.borderColor = '#22c55e';
                                 glowRing.style.boxShadow = '0 0 50px rgba(34, 197, 94, 0.8), inset 0 0 40px rgba(34, 197, 94, 0.2)';
-                                
-                                successContainer.style.opacity = '1';
-                                successContainer.style.pointerEvents = 'auto';
                                 mainStatus.style.display = 'none';
                                 subStatus.style.display = 'none';
-                                
-                                fetch('<?= base_url('login/face-verify') ?>', {method: 'POST'})
-                                    .then(r => r.json())
-                                    .then(d => { 
-                                        if(d.success) {
-                                            window.location.href = '<?= base_url('voting') ?>';
-                                        } else {
-                                            alert('Verification failed: ' + (d.message || 'Unknown error'));
-                                            retryFaceVerification();
-                                        }
-                                    })
-                                    .catch(err => {
-                                        console.error('Verification failed:', err);
-                                        alert('Verification error: ' + err.message);
-                                        retryFaceVerification();
-                                    });
+                                window.location.href = '<?= base_url('voting') ?>';
                             } else {
-                                console.warn('❌ FACE MISMATCH! ', matchResult);
-                                mainStatus.textContent = '❌ Face does not match';
-                                subStatus.textContent = 'Retrying...';
+                                mainStatus.textContent = 'Face verification failed';
+                                subStatus.textContent = matchResult.message || 'Please try again or use your password to log in.';
                                 glowRing.style.borderColor = '#ef4444';
                                 glowRing.style.boxShadow = '0 0 80px rgba(239, 68, 68, 0.9)';
                                 setTimeout(() => {
@@ -1289,6 +1610,11 @@
                             }
                         } catch (err) {
                             console.error('Face matching error:', err);
+                            if (campusLocationRequired && err.message === 'Campus location is required for face login.') {
+                                mainStatus.textContent = 'Location verification failed';
+                                subStatus.textContent = 'Enable location access or use your password to log in.';
+                                return;
+                            }
                             mainStatus.textContent = 'Verification Error';
                             subStatus.textContent = 'Retrying...';
                             
@@ -1308,6 +1634,8 @@
                         const subStatus = document.getElementById('subStatus');
                         const progressContainer = document.getElementById('progressContainer');
                         const progressBar = document.getElementById('progressBar');
+                        const progressTrack = document.getElementById('progressTrack');
+                        const countdownTimer = document.getElementById('countdownTimer');
                         const glowRing = document.getElementById('glowRing');
                         const successContainer = document.getElementById('successContainer');
                         
@@ -1316,20 +1644,24 @@
                         successContainer.style.pointerEvents = 'none';
                         mainStatus.style.display = 'block';
                         subStatus.style.display = 'block';
-                        mainStatus.textContent = '🔐 STRICT VERIFICATION MODE';
-                        subStatus.textContent = 'Position face in frame (no photos/screens)...';
+                        mainStatus.textContent = 'Verifying your face';
+                        subStatus.textContent = 'Center your face in the frame and follow the on-screen prompt.';
                         progressContainer.style.display = 'block';
                         progressBar.style.width = '0%';
+                        progressBar.style.background = '#22c55e';
+                        progressTrack.setAttribute('aria-valuenow', '0');
+                        progressTrack.classList.remove('timer-complete');
+                        countdownTimer.textContent = 'Preparing 30-second smile check...';
+                        mainStatus.classList.remove('timer-time-up');
                         glowRing.style.animation = 'pulseGlow 2s infinite';
                         glowRing.style.borderColor = '#06b6d4';
                         glowRing.style.boxShadow = '0 0 30px rgba(6, 182, 212, 0.4), inset 0 0 30px rgba(6, 182, 212, 0.1)';
                         
                         // Clear challenge state
                         currentChallenge = null;
-                        window.blinkDetectionCounter = 0;
+                        smileState = null;
                         faceMotionHistory = [];
                         previousLandmarks = null;
-                        consecutiveChallengeFailures = 0;  // Reset failure counter on retry
                         
                         // Restart detection
                         verifyFaceWithBlinkDetection();
@@ -1339,12 +1671,12 @@
                         showFaceVerificationUI();
                         setTimeout(function() {
                             const btn = document.getElementById('startCameraBtn');
-                            if (btn && modelsLoaded) btn.click();
+                            if (btn && modelsLoaded && descriptorLoaded) btn.click();
                             else if (btn) {
                                 const waitModels = setInterval(function() {
-                                    if (modelsLoaded) {
+                                    if (modelLoadError || descriptorLoaded) {
                                         clearInterval(waitModels);
-                                        btn.click();
+                                        if (modelsLoaded && descriptorLoaded) btn.click();
                                     }
                                 }, 200);
                             }
@@ -1359,13 +1691,14 @@
                     const longitudeInput = document.getElementById('longitude');
                     const locationStatus = document.getElementById('locationStatus');
                     if (!latitudeInput || !longitudeInput || !locationStatus) return;
+                    const campusLocationRequired = <?= json_encode($campus_location_required ?? false) ?>;
 
                     let geolocationComplete = false;
                     let geolocationAttempted = false;
 
-                    function updateLocationMessage(message, isError = false) {
+                    function updateLocationMessage(message, isError = false, isSuccess = false) {
                         locationStatus.textContent = message;
-                        locationStatus.className = 'mt-2 small text-' + (isError ? 'danger' : 'muted');
+                        locationStatus.className = 'mt-2 small text-' + (isError ? 'danger' : (isSuccess ? 'success' : 'muted'));
                     }
 
                     // Get location on page load
@@ -1376,19 +1709,18 @@
                                 latitudeInput.value = position.coords.latitude;
                                 longitudeInput.value = position.coords.longitude;
                                 geolocationComplete = true;
-                                updateLocationMessage('Campus location detected.');
+                                updateLocationMessage('✓ Campus location detected.', false, true);
                                 console.log('✓ Location acquired: ' + position.coords.latitude + ', ' + position.coords.longitude);
                             },
                             function (error) {
                                 geolocationComplete = true;
-                                // Still mark as complete even on error - allow submission without location
                                 console.warn('Geolocation error:', error);
                                 if (error.code === error.PERMISSION_DENIED) {
-                                    updateLocationMessage('Location permission denied. You can still login, but campus verification may be limited.', true);
+                                    updateLocationMessage('Location permission denied. Radius access is required.', true);
                                 } else if (error.code === error.TIMEOUT) {
-                                    updateLocationMessage('Location request timed out. Proceeding without location verification.', true);
+                                    updateLocationMessage('Location request timed out. Campus location is required while campus restrictions are enabled.', true);
                                 } else {
-                                    updateLocationMessage('Could not determine location. Proceeding without location verification.', true);
+                                    updateLocationMessage('Could not determine location. Campus location is required while campus restrictions are enabled.', true);
                                 }
                             },
                             {
@@ -1417,11 +1749,19 @@
                                     waitTime += 100;
                                     if (geolocationComplete || waitTime > 2000) {
                                         clearInterval(waitInterval);
+                                        if (campusLocationRequired && (!latitudeInput.value || !longitudeInput.value)) {
+                                            updateLocationMessage('A campus location is required to log in.', true);
+                                            return;
+                                        }
                                         studentForm.submit(); // Submit after waiting
                                     }
                                 }, 100);
                             }
-                            // Otherwise allow form to submit normally
+                            if (campusLocationRequired && (!latitudeInput.value || !longitudeInput.value)) {
+                                e.preventDefault();
+                                if (geolocationAttempted && !geolocationComplete) return;
+                                updateLocationMessage('A campus location is required to log in.', true);
+                            }
                         });
                     }
                 })();

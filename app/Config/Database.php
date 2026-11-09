@@ -221,7 +221,11 @@ class Database extends Config
 
         // Automatically enable SSL when connecting to cloud MySQL (such as TiDB Cloud)
         if (str_contains($this->default['hostname'] ?? '', 'tidbcloud.com')) {
-            $this->default['encrypt'] = ['ssl_verify' => false];
+            $this->default['encrypt'] = [
+                'ssl_verify' => false,
+                'ssl_cipher' => 'DEFAULT',
+                'ssl_capath' => is_dir('/etc/ssl/certs') ? '/etc/ssl/certs' : '',
+            ];
         }
     }
 }

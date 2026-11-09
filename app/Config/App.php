@@ -24,7 +24,10 @@ class App extends BaseConfig
         $this->forceGlobalSecureRequests = ENVIRONMENT === 'production'
             || (bool) env('app.forceGlobalSecureRequests', false);
 
-        $configuredBaseURL = trim((string) env('app.baseURL', ''), " \t\n\r\0\x0B'\"");
+        $configuredBaseURL = trim((string) env('app.baseURL', getenv('RENDER_EXTERNAL_URL') ?: ''), " \t\n\r\0\x0B'\"");
+        if ($configuredBaseURL === '' && ! empty($_SERVER['HTTP_HOST'])) {
+            $configuredBaseURL = 'https://' . $_SERVER['HTTP_HOST'] . '/';
+        }
         if ($configuredBaseURL !== '') {
             $parsedBaseURL = parse_url($configuredBaseURL);
             if (
@@ -35,7 +38,8 @@ class App extends BaseConfig
                 throw new \RuntimeException('app.baseURL must be an absolute HTTP or HTTPS URL.');
             }
             if (ENVIRONMENT === 'production' && strtolower($parsedBaseURL['scheme']) !== 'https') {
-                throw new \RuntimeException('app.baseURL must use HTTPS in production.');
+                $configuredBaseURL = preg_replace('/^http:\/\//i', 'https://', $configuredBaseURL);
+                $parsedBaseURL['scheme'] = 'https';
             }
 
             $this->baseURL = rtrim($configuredBaseURL, '/') . '/';

@@ -212,12 +212,18 @@ class Database extends Config
             ?: env('DB_PASSWORD')
             ?: env('DB_PASS')
             ?: env('TIDB_PASSWORD')
+            ?: getenv('database.default.password')
+            ?: getenv('TIDB_PASSWORD')
+            ?: getenv('DB_PASSWORD')
+            ?: ($_SERVER['database.default.password'] ?? '')
+            ?: ($_SERVER['TIDB_PASSWORD'] ?? '')
             ?: ''
         );
         if ($dbPassword === '') {
-            foreach ($_ENV as $k => $v) {
-                if (stripos($k, 'password') !== false && ! empty($v)) {
-                    $dbPassword = (string) $v;
+            $allVars = array_merge((array) getenv(), (array) $_SERVER, (array) $_ENV);
+            foreach ($allVars as $k => $v) {
+                if (is_string($k) && is_string($v) && $v !== '' && stripos($k, 'password') !== false) {
+                    $dbPassword = $v;
                     break;
                 }
             }

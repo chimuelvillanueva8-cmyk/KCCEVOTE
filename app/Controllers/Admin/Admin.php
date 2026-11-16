@@ -1522,12 +1522,24 @@ class Admin extends \App\Controllers\BaseController
             return redirect()->back()->withInput()->with('error', 'Please enter a valid numeric radius in meters.');
         }
 
+        if ($radius !== '' && (! is_finite((float) $radius) || (float) $radius < 0)) {
+            return redirect()->back()->withInput()->with('error', 'The allowed radius must be zero or greater.');
+        }
+
         if ($latitude !== '' && ! is_numeric($latitude)) {
             return redirect()->back()->withInput()->with('error', 'Please enter a valid campus latitude.');
         }
 
+        if ($latitude !== '' && (! is_finite((float) $latitude) || (float) $latitude < -90 || (float) $latitude > 90)) {
+            return redirect()->back()->withInput()->with('error', 'Campus latitude must be between -90 and 90 degrees.');
+        }
+
         if ($longitude !== '' && ! is_numeric($longitude)) {
             return redirect()->back()->withInput()->with('error', 'Please enter a valid campus longitude.');
+        }
+
+        if ($longitude !== '' && (! is_finite((float) $longitude) || (float) $longitude < -180 || (float) $longitude > 180)) {
+            return redirect()->back()->withInput()->with('error', 'Campus longitude must be between -180 and 180 degrees.');
         }
 
         if ($radius !== '' && ($latitude === '' || $longitude === '')) {

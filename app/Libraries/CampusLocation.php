@@ -6,13 +6,7 @@ final class CampusLocation
 {
     public static function isConfigured(array $settings): bool
     {
-        foreach (['campus_latitude', 'campus_longitude', 'campus_access_radius'] as $key) {
-            if (trim((string) ($settings[$key] ?? '')) !== '') {
-                return true;
-            }
-        }
-
-        return false;
+        return trim((string) ($settings['campus_access_radius'] ?? '')) !== '';
     }
 
     public static function isWithinRange(?float $latitude, ?float $longitude, array $settings): bool

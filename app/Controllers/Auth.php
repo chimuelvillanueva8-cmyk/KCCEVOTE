@@ -3,6 +3,7 @@
 namespace App\Controllers;
 
 use App\Libraries\FaceIdentity;
+use App\Libraries\CampusLocation;
 use App\Models\AuditLogModel;
 use App\Models\UserModel;
 
@@ -165,14 +166,71 @@ class Auth extends BaseController
 
                 $latitude = $this->request->getPost('latitude') ?? ($requestData['latitude'] ?? null);
                 $longitude = $this->request->getPost('longitude') ?? ($requestData['longitude'] ?? null);
-                
                 $latValue = is_numeric($latitude) ? floatval($latitude) : null;
                 $lngValue = is_numeric($longitude) ? floatval($longitude) : null;
-                
+
                 if (! $this->isWithinCampusRange($latValue, $lngValue)) {
-                    $session->setFlashdata('error', 'Access denied: your location is outside the permitted campus access radius.');
-                    $session->remove(['temp_user_id', 'temp_user_type', 'temp_user_name', 'temp_student_id', 'temp_face_descriptor']);
-                    return $this->response->setJSON(['success' => false, 'message' => 'Location verification failed.']);
+                    $settings = $this->getCampusSettings();
+                    $accuracy = $requestData['accuracy'] ?? $this->request->getPost('accuracy');
+                    $code = 'location_unavailable';
+                    $message = 'Campus location could not be determined. Enable location access and retry verification.';
+
+                    $coordinatesAreValid = $latValue !== null
+                        && $lngValue !== null
+                        && is_finite($latValue)
+                        && is_finite($lngValue)
+                        && $latValue >= -90
+                        && $latValue <= 90
+                        && $lngValue >= -180
+                        && $lngValue <= 180;
+
+                    if ($coordinatesAreValid) {
+                        $code = 'location_outside';
+                        $message = 'Your location is outside the permitted campus access radius. Face verification is complete, but access is still restricted by campus policy.';
+
+                        if (
+                            is_numeric($accuracy)
+                            && is_numeric($settings['campus_latitude'] ?? null)
+                            && is_numeric($settings['campus_longitude'] ?? null)
+                            && is_numeric($settings['campus_access_radius'] ?? null)
+                        ) {
+                            $accuracy = max(0.0, (float) $accuracy);
+                            $campusLatitude = (float) $settings['campus_latitude'];
+                            $campusLongitude = (float) $settings['campus_longitude'];
+                            $radius = (float) $settings['campus_access_radius'];
+                            if (
+                                is_finite($accuracy)
+                                && is_finite($campusLatitude)
+                                && is_finite($campusLongitude)
+                                && is_finite($radius)
+                                && $campusLatitude >= -90
+                                && $campusLatitude <= 90
+                                && $campusLongitude >= -180
+                                && $campusLongitude <= 180
+                                && $radius >= 0
+                            ) {
+                                $distance = CampusLocation::calculateDistanceMeters(
+                                    $campusLatitude,
+                                    $campusLongitude,
+                                    $latValue,
+                                    $lngValue
+                                );
+
+                                if ($distance <= $radius + $accuracy) {
+                                    $code = 'location_uncertain';
+                                    $message = 'Your GPS reading may be too inaccurate to confirm that you are within the campus radius. Move outdoors and retry verification.';
+                                }
+                            }
+                        }
+                    } else {
+                        $message = 'The location reading is invalid or unavailable. Check your device location settings and retry verification.';
+                    }
+
+                    return $this->response->setJSON([
+                        'success' => false,
+                        'code' => $code,
+                        'message' => $message,
+                    ]);
                 }
                 
                 $loginAt = date('Y-m-d H:i:s');

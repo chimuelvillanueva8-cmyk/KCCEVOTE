@@ -10,10 +10,13 @@ final class CampusLocationTest extends TestCase
         self::assertTrue(CampusLocation::isWithinRange(null, null, []));
     }
 
-    public function testPartialSettingsAndMissingCoordinatesFailClosed(): void
+    public function testRadiusControlsGeofenceAndIncompleteConfiguredSettingsFailClosed(): void
     {
-        self::assertFalse(CampusLocation::isWithinRange(10.0, 20.0, [
+        self::assertTrue(CampusLocation::isWithinRange(null, null, [
             'campus_latitude' => '10',
+        ]));
+        self::assertFalse(CampusLocation::isWithinRange(10.0, 20.0, [
+            'campus_access_radius' => '100',
         ]));
         self::assertFalse(CampusLocation::isWithinRange(null, null, [
             'campus_latitude' => '10',

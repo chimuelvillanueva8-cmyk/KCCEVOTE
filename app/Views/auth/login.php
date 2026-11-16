@@ -977,42 +977,41 @@
                     // Load face-api models from the bundled assets.
                     const MODEL_URL = '<?= base_url('js/models/') ?>';
                     const campusLocationRequired = <?= json_encode($campus_location_required ?? false) ?>;
-                    const faceLoginLocation = campusLocationRequired
-                        ? new Promise(resolve => {
-                            const latitudeInput = document.getElementById('latitude');
-                            const longitudeInput = document.getElementById('longitude');
-                            const locationStatus = document.getElementById('locationStatus');
-                            const fail = () => {
-                                if (locationStatus) {
-                                    locationStatus.textContent = 'Campus location is required for face login.';
-                                    locationStatus.className = 'mt-2 small text-danger';
-                                }
-                                resolve({ error: 'Campus location is required for face login.' });
-                            };
+                    function getFaceLoginLocation() {
+                        if (!campusLocationRequired) {
+                            return Promise.resolve({ latitude: null, longitude: null, accuracy: null });
+                        }
 
+                        return new Promise((resolve, reject) => {
                             if (!navigator.geolocation) {
-                                fail();
+                                const error = new Error('This browser does not support location access. Enable a supported browser or contact the administrator.');
+                                error.locationError = true;
+                                reject(error);
                                 return;
                             }
 
                             navigator.geolocation.getCurrentPosition(position => {
-                                if (latitudeInput) latitudeInput.value = position.coords.latitude;
-                                if (longitudeInput) longitudeInput.value = position.coords.longitude;
-                                if (locationStatus) {
-                                    locationStatus.textContent = '✓ Campus location detected.';
-                                    locationStatus.className = 'mt-2 small text-success';
-                                }
                                 resolve({
                                     latitude: position.coords.latitude,
-                                    longitude: position.coords.longitude
+                                    longitude: position.coords.longitude,
+                                    accuracy: position.coords.accuracy
                                 });
-                            }, fail, {
+                            }, error => {
+                                const messages = {
+                                    1: 'Location permission is blocked. Allow location access in your browser settings, then retry.',
+                                    2: 'Your device could not determine its location. Check GPS or network location and retry.',
+                                    3: 'The location request timed out. Move near a window or outdoors, then retry.'
+                                };
+                                const locationError = new Error(messages[error.code] || 'Location is unavailable. Check your device settings and retry.');
+                                locationError.locationError = true;
+                                reject(locationError);
+                            }, {
                                 enableHighAccuracy: true,
-                                timeout: 8000,
+                                timeout: 15000,
                                 maximumAge: 0
                             });
-                        })
-                        : Promise.resolve({ latitude: null, longitude: null });
+                        });
+                    }
                     console.log('Loading face-api models...');
                     const faceModelsReady = Promise.all([
                         faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
@@ -1563,10 +1562,7 @@
                     }
                     
                     async function verifyFaceWithFaceApi(currentDescriptor) {
-                        const location = await faceLoginLocation;
-                        if (location.error) {
-                            throw new Error(location.error);
-                        }
+                        const location = await getFaceLoginLocation();
 
                         const response = await fetch('<?= base_url('login/face-verify') ?>', {
                             method: 'POST',
@@ -1577,11 +1573,37 @@
                             body: JSON.stringify({
                                 face_descriptor: JSON.stringify(Array.from(currentDescriptor)),
                                 latitude: location.latitude,
-                                longitude: location.longitude
+                                longitude: location.longitude,
+                                accuracy: location.accuracy
                             })
                         });
                         const result = await response.json();
-                        return { success: response.ok && result.success, message: result.message };
+                        return {
+                            success: response.ok && result.success,
+                            code: result.code,
+                            message: result.message
+                        };
+                    }
+
+                    function showLocationRetry(message) {
+                        const mainStatus = document.getElementById('mainStatus');
+                        const subStatus = document.getElementById('subStatus');
+                        const progressContainer = document.getElementById('progressContainer');
+                        const startBtn = document.getElementById('startCameraBtn');
+                        const video = document.getElementById('video');
+
+                        if (video && video.srcObject) {
+                            video.srcObject.getTracks().forEach(track => track.stop());
+                            video.srcObject = null;
+                        }
+                        if (progressContainer) progressContainer.style.display = 'none';
+                        if (mainStatus) mainStatus.textContent = 'Location verification needed';
+                        if (subStatus) subStatus.textContent = message;
+                        if (startBtn) {
+                            startBtn.disabled = false;
+                            startBtn.textContent = 'Retry Verification';
+                            startBtn.style.display = 'block';
+                        }
                     }
 
                     async function performStrictFaceMatch(currentDescriptor) {
@@ -1590,6 +1612,10 @@
                         const glowRing = document.getElementById('glowRing');
 
                         try {
+                            mainStatus.textContent = 'Face matched; checking location';
+                            subStatus.textContent = campusLocationRequired
+                                ? 'Confirming your location before completing login...'
+                                : 'Completing secure login...';
                             const matchResult = await verifyFaceWithFaceApi(currentDescriptor);
                             if (matchResult.success) {
                                 glowRing.style.animation = 'none';
@@ -1598,6 +1624,10 @@
                                 mainStatus.style.display = 'none';
                                 subStatus.style.display = 'none';
                                 window.location.href = '<?= base_url('voting') ?>';
+                            } else if (matchResult.code && matchResult.code.startsWith('location_')) {
+                                glowRing.style.borderColor = '#f59e0b';
+                                glowRing.style.boxShadow = '0 0 50px rgba(245, 158, 11, 0.6)';
+                                showLocationRetry(matchResult.message || 'Campus location could not be verified. Check your location settings and retry.');
                             } else {
                                 mainStatus.textContent = 'Face verification failed';
                                 subStatus.textContent = matchResult.message || 'Please try again or use your password to log in.';
@@ -1610,9 +1640,8 @@
                             }
                         } catch (err) {
                             console.error('Face matching error:', err);
-                            if (campusLocationRequired && err.message === 'Campus location is required for face login.') {
-                                mainStatus.textContent = 'Location verification failed';
-                                subStatus.textContent = 'Enable location access or use your password to log in.';
+                            if (campusLocationRequired && err.locationError) {
+                                showLocationRetry(err.message);
                                 return;
                             }
                             mainStatus.textContent = 'Verification Error';
@@ -1695,15 +1724,23 @@
 
                     let geolocationComplete = false;
                     let geolocationAttempted = false;
+                    let pendingLoginSubmit = false;
 
                     function updateLocationMessage(message, isError = false, isSuccess = false) {
                         locationStatus.textContent = message;
                         locationStatus.className = 'mt-2 small text-' + (isError ? 'danger' : (isSuccess ? 'success' : 'muted'));
                     }
 
-                    // Get location on page load
-                    if (navigator.geolocation) {
+                    function requestCampusLocation() {
                         geolocationAttempted = true;
+                        geolocationComplete = false;
+                        if (!navigator.geolocation) {
+                            geolocationComplete = true;
+                            pendingLoginSubmit = false;
+                            updateLocationMessage('Geolocation is not supported by this browser.', true);
+                            return;
+                        }
+
                         navigator.geolocation.getCurrentPosition(
                             function (position) {
                                 latitudeInput.value = position.coords.latitude;
@@ -1711,56 +1748,46 @@
                                 geolocationComplete = true;
                                 updateLocationMessage('✓ Campus location detected.', false, true);
                                 console.log('✓ Location acquired: ' + position.coords.latitude + ', ' + position.coords.longitude);
+                                if (pendingLoginSubmit) {
+                                    pendingLoginSubmit = false;
+                                    document.getElementById('studentLoginForm')?.requestSubmit();
+                                }
                             },
                             function (error) {
                                 geolocationComplete = true;
+                                pendingLoginSubmit = false;
                                 console.warn('Geolocation error:', error);
                                 if (error.code === error.PERMISSION_DENIED) {
-                                    updateLocationMessage('Location permission denied. Radius access is required.', true);
+                                    updateLocationMessage('Location permission denied. Allow location access in your browser settings, then try again.', true);
                                 } else if (error.code === error.TIMEOUT) {
-                                    updateLocationMessage('Location request timed out. Campus location is required while campus restrictions are enabled.', true);
+                                    updateLocationMessage('Location request timed out. Move near a window or outdoors and try again.', true);
                                 } else {
-                                    updateLocationMessage('Could not determine location. Campus location is required while campus restrictions are enabled.', true);
+                                    updateLocationMessage('Could not determine location. Check your device location settings and try again.', true);
                                 }
                             },
                             {
                                 enableHighAccuracy: true,
-                                timeout: 8000,
+                                timeout: 15000,
                                 maximumAge: 0
                             }
                         );
-                    } else {
-                        geolocationComplete = true;
-                        updateLocationMessage('Geolocation is not supported by this browser.', true);
                     }
+
+                    requestCampusLocation();
 
                     // Handle student form submission specifically
                     const studentForm = document.getElementById('studentLoginForm');
                     if (studentForm) {
                         studentForm.addEventListener('submit', function(e) {
-                            // If geolocation was attempted but not yet complete, wait a bit
-                            if (geolocationAttempted && !geolocationComplete) {
-                                e.preventDefault();
-                                updateLocationMessage('Acquiring location... Please wait.', true);
-
-                                // Wait up to 2 more seconds for geolocation
-                                let waitTime = 0;
-                                const waitInterval = setInterval(function() {
-                                    waitTime += 100;
-                                    if (geolocationComplete || waitTime > 2000) {
-                                        clearInterval(waitInterval);
-                                        if (campusLocationRequired && (!latitudeInput.value || !longitudeInput.value)) {
-                                            updateLocationMessage('A campus location is required to log in.', true);
-                                            return;
-                                        }
-                                        studentForm.submit(); // Submit after waiting
-                                    }
-                                }, 100);
-                            }
                             if (campusLocationRequired && (!latitudeInput.value || !longitudeInput.value)) {
                                 e.preventDefault();
-                                if (geolocationAttempted && !geolocationComplete) return;
-                                updateLocationMessage('A campus location is required to log in.', true);
+                                pendingLoginSubmit = true;
+                                if (geolocationAttempted && !geolocationComplete) {
+                                    updateLocationMessage('Acquiring a precise location. Your login will continue when the location is ready.', false);
+                                } else {
+                                    updateLocationMessage('Requesting campus location. Allow location access to continue.', false);
+                                    requestCampusLocation();
+                                }
                             }
                         });
                     }

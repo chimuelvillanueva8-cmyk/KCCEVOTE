@@ -128,7 +128,7 @@
                         <div class="form-group">
                             <label for="campus_access_radius">Allowed Radius (meters)</label>
                             <input type="number" id="campus_access_radius" name="campus_access_radius" class="form-control" value="<?= esc($campus_access_radius) ?>" min="0" step="1" placeholder="e.g. 500">
-                            <small class="text-muted">Users can only access the system when their device is inside this radius from campus center.</small>
+                            <small class="text-muted">When a radius is set, students must be within it to access the student portal. Leave the radius blank to disable the campus location restriction.</small>
                         </div>
                         <button type="submit" class="btn btn-primary">Save Campus Access Settings</button>
                     </form>

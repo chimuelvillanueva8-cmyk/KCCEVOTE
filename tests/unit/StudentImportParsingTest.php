@@ -18,6 +18,11 @@ final class StudentImportControllerForTesting extends Student
     {
         $this->appendImportRow($rows, $headers, $values);
     }
+
+    public function findHeaderIndex(array $rawRows, array $fieldMap): ?int
+    {
+        return $this->findImportHeaderRowIndex($rawRows, $fieldMap);
+    }
 }
 
 final class StudentImportParsingTest extends TestCase
@@ -53,5 +58,20 @@ final class StudentImportParsingTest extends TestCase
         self::assertSame([
             ['student_id' => '12345', 'full_name' => 'Ada', 'course' => ''],
         ], $rows);
+    }
+
+    public function testHeaderRowCanFollowSpreadsheetTitleRows(): void
+    {
+        $controller = new StudentImportControllerForTesting();
+        $fieldMap = [
+            'student id' => 'student_id',
+            'first name' => 'first_name',
+        ];
+
+        self::assertSame(1, $controller->findHeaderIndex([
+            ['STUDENT MASTERLIST - DEPARTMENT', '', ''],
+            ['Student ID', 'First Name', 'Course'],
+            ['12345', 'Ada', 'BSIT'],
+        ], $fieldMap));
     }
 }

@@ -469,6 +469,19 @@ class Student extends BaseController
         return null;
     }
 
+    protected function findImportHeaderRowIndex(array $rawRows, array $fieldMap): ?int
+    {
+        foreach (array_slice($rawRows, 0, 10, true) as $index => $candidateHeaders) {
+            foreach ($candidateHeaders as $header) {
+                if ($this->importFieldForHeader((string) $header, $fieldMap) === 'student_id') {
+                    return (int) $index;
+                }
+            }
+        }
+
+        return null;
+    }
+
     public function import()
     {
         $file = $this->request->getFile('student_file');
@@ -478,6 +491,7 @@ class Student extends BaseController
 
         $ext = strtolower(pathinfo($file->getClientName(), PATHINFO_EXTENSION));
         $path = $file->getTempName();
+        $rawRows = [];
         $rows = [];
 
         if (in_array($ext, ['csv', 'txt'])) {
@@ -490,12 +504,12 @@ class Student extends BaseController
                 fclose($handle);
                 return $this->response->setJSON(['success' => false, 'message' => 'Uploaded file is empty or invalid.']);
             }
-            $headers = array_map(static fn ($header) => trim((string) $header), $headers);
-            if (isset($headers[0])) {
-                $headers[0] = preg_replace('/^\xEF\xBB\xBF/', '', $headers[0]);
+            $rawRows[] = $headers;
+            if (isset($rawRows[0][0])) {
+                $rawRows[0][0] = preg_replace('/^\xEF\xBB\xBF/', '', (string) $rawRows[0][0]);
             }
             while (($line = fgetcsv($handle)) !== false) {
-                $this->appendImportRow($rows, $headers, $line);
+                $rawRows[] = $line;
             }
             fclose($handle);
         } elseif (in_array($ext, ['xlsx', 'xls'])) {
@@ -511,14 +525,7 @@ class Student extends BaseController
             $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($path);
             $spreadsheet = $reader->load($path);
             $sheet = $spreadsheet->getActiveSheet();
-            $sheetRows = $sheet->toArray(null, true, true, false);
-            $headerRow = array_map(
-                static fn ($header) => trim((string) $header),
-                array_shift($sheetRows) ?? []
-            );
-            foreach ($sheetRows as $rowValues) {
-                $this->appendImportRow($rows, $headerRow, $rowValues);
-            }
+            $rawRows = $sheet->toArray(null, true, true, false);
         } else {
             return $this->response->setJSON(['success' => false, 'message' => 'Unsupported file type. Use CSV.']);
         }
@@ -577,6 +584,19 @@ class Student extends BaseController
             'section' => 'section',
             'status' => 'status',
         ];
+
+        $headerRowIndex = $this->findImportHeaderRowIndex($rawRows, $fieldMap);
+        $headerRowIndex ??= 0;
+        $headers = array_map(
+            static fn ($header) => trim((string) $header),
+            $rawRows[$headerRowIndex] ?? []
+        );
+        while ($headers !== [] && end($headers) === '') {
+            array_pop($headers);
+        }
+        for ($rowIndex = $headerRowIndex + 1, $rowCount = count($rawRows); $rowIndex < $rowCount; $rowIndex++) {
+            $this->appendImportRow($rows, $headers, $rawRows[$rowIndex]);
+        }
 
         if ($rows !== []) {
             $hasStudentIdColumn = false;

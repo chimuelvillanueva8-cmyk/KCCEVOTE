@@ -261,7 +261,28 @@ class Voting extends BaseController
         }
 
         $voteCastAt = date('Y-m-d H:i:s');
-        $db->transBegin();
+        $voteRows = [];
+        foreach ($validatedVotes as $positionId => $candidateIds) {
+            foreach ($candidateIds as $candidateId) {
+                $voteRows[] = [
+                    'student_id' => $studentId,
+                    'candidate_id' => $candidateId,
+                    'position_id' => $positionId,
+                    'election_id' => $electionId,
+                    'created_at' => $voteCastAt,
+                ];
+            }
+        }
+
+        if ($voteRows === []) {
+            return redirect()->back()->with('error', 'Select your choices before submitting your ballot.');
+        }
+
+        if (! $db->transBegin()) {
+            log_message('error', 'Unable to start vote transaction for student ' . $studentId . ' and election ' . $electionId . ': ' . json_encode($db->error()));
+            return redirect()->back()->with('error', 'Your vote could not be saved. Please try again.');
+        }
+
         try {
             $lockedElection = $db->query('SELECT id, status FROM elections WHERE id = ? FOR UPDATE', [$electionId])->getRowArray();
             if (! $lockedElection || strtolower((string) $lockedElection['status']) !== 'open') {
@@ -273,18 +294,8 @@ class Voting extends BaseController
                 return redirect()->back()->with('error', 'You have already submitted a ballot for this election.');
             }
 
-            foreach ($validatedVotes as $positionId => $candidateIds) {
-                foreach ($candidateIds as $candidateId) {
-                    if ($voteModel->insert([
-                        'student_id' => $studentId,
-                        'candidate_id' => $candidateId,
-                        'position_id' => $positionId,
-                        'election_id' => $electionId,
-                        'created_at' => $voteCastAt,
-                    ]) === false) {
-                        throw new \RuntimeException('Vote insert failed: ' . json_encode($voteModel->errors()));
-                    }
-                }
+            if ($db->table('votes')->insertBatch($voteRows) === false) {
+                throw new \RuntimeException('Vote batch insert failed: ' . json_encode($db->error()));
             }
 
             if (! $db->transStatus()) {
@@ -295,7 +306,11 @@ class Voting extends BaseController
             }
         } catch (\Throwable $exception) {
             $db->transRollback();
-            log_message('error', 'Vote submission failed for student ' . $studentId . ' and election ' . $electionId . ': ' . $exception->getMessage());
+            log_message(
+                'error',
+                'Vote submission failed for student ' . $studentId . ' and election ' . $electionId . ': '
+                . $exception->getMessage() . '; database error: ' . json_encode($db->error())
+            );
             return redirect()->back()->with('error', 'Your vote could not be saved. Please try again.');
         }
         (new AuditLogModel())->record(

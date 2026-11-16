@@ -2,6 +2,7 @@
 
 namespace App\Controllers\Admin;
 
+use App\Models\AdminModel;
 use App\Models\AnnouncementModel;
 use App\Models\AuditLogModel;
 use App\Models\CandidateModel;
@@ -1250,12 +1251,12 @@ class Admin extends \App\Controllers\BaseController
         }
 
         try {
-            $result = $db->table('admins')->insert([
+            $result = (new AdminModel())->insertWithNextId([
                 'admin_id_number' => $adminIdNumber,
                 'username' => $username,
                 'full_name' => $fullName,
                 'password' => $hashedPassword,
-                'created_at' => date('Y-m-d H:i:s')
+                'created_at' => date('Y-m-d H:i:s'),
             ]);
 
             if ($result) {

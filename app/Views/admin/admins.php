@@ -276,7 +276,7 @@
                             </div>
                             <div class="admin-form-field admin-form-field--wide">
                                 <label for="adminUsername" class="form-label">Username <span aria-hidden="true">*</span></label>
-                                <input type="text" class="form-control" id="adminUsername" name="username" minlength="3" maxlength="100" pattern="[A-Za-z0-9._-]+" autocomplete="username" placeholder="Letters, numbers, dots, underscores, or hyphens" required>
+                                <input type="text" class="form-control" id="adminUsername" name="username" minlength="3" maxlength="100" pattern="[-A-Za-z0-9._]+" autocomplete="username" placeholder="Letters, numbers, dots, underscores, or hyphens" required>
                             </div>
                             <div class="admin-form-field">
                                 <label for="adminPassword" class="form-label">Password <span aria-hidden="true">*</span></label>

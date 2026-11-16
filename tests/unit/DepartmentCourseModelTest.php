@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Models\AdminModel;
 use App\Models\CourseModel;
 use App\Models\DepartmentModel;
 use CodeIgniter\Test\CIUnitTestCase;
@@ -38,6 +39,18 @@ class DepartmentCourseModelTest extends CIUnitTestCase
             . 'updated_at TEXT NULL'
             . ')'
         );
+
+        $db->query(
+            'CREATE TABLE db_admins ('
+            . 'id INTEGER NOT NULL,'
+            . 'admin_id_number TEXT NOT NULL,'
+            . 'is_builtin_admin INTEGER NOT NULL DEFAULT 0,'
+            . 'username TEXT NOT NULL,'
+            . 'full_name TEXT NULL,'
+            . 'password TEXT NOT NULL,'
+            . 'created_at TEXT NULL'
+            . ')'
+        );
     }
 
     public function testDepartmentInsertUsesNextIdWhenAutoIncrementIsMissing(): void
@@ -72,6 +85,26 @@ class DepartmentCourseModelTest extends CIUnitTestCase
 
         $db = db_connect('tests');
         $row = $db->query('SELECT MAX(id) AS max_id FROM db_courses')->getRow();
+        $this->assertSame(1, (int) ($row->max_id ?? 0));
+    }
+
+    public function testAdminInsertUsesNextIdWhenAutoIncrementIsMissing(): void
+    {
+        $model = new AdminModel();
+
+        $result = $model->insertWithNextId([
+            'admin_id_number' => 'ADM-1001',
+            'is_builtin_admin' => 0,
+            'username' => 'admin_test',
+            'full_name' => 'Test Admin',
+            'password' => password_hash('secret123', PASSWORD_DEFAULT),
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        $this->assertNotFalse($result);
+
+        $db = db_connect('tests');
+        $row = $db->query('SELECT MAX(id) AS max_id FROM db_admins')->getRow();
         $this->assertSame(1, (int) ($row->max_id ?? 0));
     }
 }

@@ -101,6 +101,27 @@ class ElectionModel extends Model
             $voterCounts[(int) $row['election_id']] = (int) $row['voters'];
         }
 
+        $candidateCounts = [];
+        $hasPositionElectionId = $this->db->fieldExists('election_id', 'positions');
+        $candidateElectionId = $hasPositionElectionId
+            ? 'COALESCE(c.election_id, pos.election_id)'
+            : 'c.election_id';
+        $candidateBuilder = $this->db->table('candidates c')
+            ->select($candidateElectionId . ' AS election_id, COUNT(DISTINCT c.id) AS candidate_count', false);
+
+        if ($hasPositionElectionId) {
+            $candidateBuilder->join('positions pos', 'pos.id = c.position_id', 'left');
+        }
+
+        foreach ($candidateBuilder
+            ->groupBy($candidateElectionId, false)
+            ->get()
+            ->getResultArray() as $row) {
+            if ($row['election_id'] !== null) {
+                $candidateCounts[(int) $row['election_id']] = (int) $row['candidate_count'];
+            }
+        }
+
         $overview = [];
         foreach ($this->db->table($this->table)
             ->orderBy('start_time', 'DESC')
@@ -114,6 +135,7 @@ class ElectionModel extends Model
                 'id' => $electionId,
                 'title' => (string) $election['title'],
                 'status' => (string) $election['status'],
+                'candidate_count' => $candidateCounts[$electionId] ?? 0,
                 'voters' => $voters,
                 'eligible_voters' => $eligibleVoters,
                 'turnout_rate' => $eligibleVoters > 0

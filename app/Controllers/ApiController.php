@@ -86,6 +86,7 @@ class ApiController extends BaseController
             'students' => $studentCount,
             'votes' => $voteCount,
             'candidates' => $candidateCount,
+            'election_id' => $election ? (int) $election['id'] : null,
             'election_status' => $electionStatus,
             'election_title' => $election['title'] ?? null,
             'voters' => $voterCount,

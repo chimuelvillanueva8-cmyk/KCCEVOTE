@@ -1,4 +1,7 @@
 // Admin Dashboard Enhancements
+let dashboardElections = [];
+let dashboardElectionIndex = 0;
+
 function formatTimestamp(timestamp) {
     const date = new Date(timestamp);
     const now = new Date();
@@ -66,13 +69,54 @@ function renderSystemStatus(status) {
     });
 }
 
-function updateDashboard(data) {
-    const studentCount = document.getElementById('student-count');
-    const voteCount = document.getElementById('vote-count');
+function renderDashboardElectionStats() {
     const candidateCount = document.getElementById('candidate-count');
     const candidateElectionTitle = document.getElementById('candidate-election-title');
     const electionStatus = document.getElementById('election-status');
     const electionStatusTitle = document.getElementById('election-status-title');
+    const election = dashboardElections[dashboardElectionIndex];
+
+    if (!election) {
+        if (candidateCount) candidateCount.textContent = '0';
+        if (candidateElectionTitle) candidateElectionTitle.textContent = 'No election available';
+        if (electionStatus) electionStatus.textContent = 'NONE';
+        if (electionStatusTitle) electionStatusTitle.textContent = 'No election available';
+        return;
+    }
+
+    const candidateTotal = Number(election.candidate_count);
+    const electionTitle = election.title ? `Election: ${election.title}` : 'Untitled election';
+
+    if (candidateCount) candidateCount.textContent = Number.isFinite(candidateTotal) ? String(candidateTotal) : '0';
+    if (candidateElectionTitle) candidateElectionTitle.textContent = electionTitle;
+    if (electionStatus) electionStatus.textContent = String(election.status || 'NONE').toUpperCase();
+    if (electionStatusTitle) electionStatusTitle.textContent = electionTitle;
+}
+
+function updateDashboardElectionStats(elections, preferredElectionId) {
+    const currentElection = dashboardElections[dashboardElectionIndex];
+    const currentElectionId = currentElection ? currentElection.id : null;
+    dashboardElections = Array.isArray(elections) ? elections : [];
+
+    const selectedElectionId = currentElectionId ?? preferredElectionId;
+    const selectedIndex = selectedElectionId === null || selectedElectionId === undefined
+        ? -1
+        : dashboardElections.findIndex(election => String(election.id) === String(selectedElectionId));
+
+    dashboardElectionIndex = selectedIndex >= 0 ? selectedIndex : 0;
+    renderDashboardElectionStats();
+}
+
+function advanceDashboardElection() {
+    if (dashboardElections.length < 2) return;
+
+    dashboardElectionIndex = (dashboardElectionIndex + 1) % dashboardElections.length;
+    renderDashboardElectionStats();
+}
+
+function updateDashboard(data) {
+    const studentCount = document.getElementById('student-count');
+    const voteCount = document.getElementById('vote-count');
     const progressBar = document.getElementById('vote-progress-bar');
     const progressLabel = document.getElementById('vote-progress-label');
     const progressTrack = progressBar ? progressBar.parentElement : null;
@@ -81,11 +125,7 @@ function updateDashboard(data) {
 
     if (studentCount) studentCount.textContent = data.students;
     if (voteCount) voteCount.textContent = data.votes;
-    if (candidateCount) candidateCount.textContent = data.candidates;
-    const electionTitle = data.election_title ? `Election: ${data.election_title}` : 'No election available';
-    if (candidateElectionTitle) candidateElectionTitle.textContent = electionTitle;
-    if (electionStatus) electionStatus.textContent = data.election_status;
-    if (electionStatusTitle) electionStatusTitle.textContent = electionTitle;
+    updateDashboardElectionStats(data.elections_overview, data.election_id);
     if (progressBar) {
         const width = Number.isFinite(Number(data.vote_progress)) ? Math.max(0, Math.min(100, Number(data.vote_progress))) : 0;
         progressBar.style.width = `${width}%`;
@@ -279,6 +319,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (document.getElementById('student-count')) {
         fetchDashboardStats();
         setInterval(fetchDashboardStats, 30000);
+        setInterval(advanceDashboardElection, 5000);
     }
 
     // Add page enter animation

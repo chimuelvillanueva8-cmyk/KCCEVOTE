@@ -297,8 +297,13 @@ class Voting extends BaseController
             }
 
             $voteStage = 'inserting the ballot';
-            if ($db->table('votes')->insertBatch($voteRows) === false) {
-                throw new \RuntimeException('Vote batch insert failed: ' . json_encode($db->error()));
+            $insertedVoteCount = $db->table('votes')->insertBatch($voteRows);
+            if ($insertedVoteCount !== count($voteRows)) {
+                throw new \RuntimeException(
+                    'Vote batch insert wrote ' . var_export($insertedVoteCount, true)
+                    . ' of ' . count($voteRows) . ' expected rows; database error: '
+                    . json_encode($db->error())
+                );
             }
 
             $voteStage = 'checking the transaction';
@@ -310,8 +315,8 @@ class Voting extends BaseController
                 throw new \RuntimeException('Vote transaction could not be committed.');
             }
         } catch (\Throwable $exception) {
-            $db->transRollback();
             $databaseError = $db->error();
+            $db->transRollback();
             $diagnostic = 'Vote submission failed while ' . $voteStage
                 . ': ' . $exception->getMessage()
                 . '; database error: ' . json_encode($databaseError);

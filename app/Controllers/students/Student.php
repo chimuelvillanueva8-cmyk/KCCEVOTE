@@ -563,6 +563,7 @@ class Student extends BaseController
             'middle name' => 'middle_name',
             'middlename' => 'middle_name',
             'middle initial' => 'middle_name',
+            'middle initial name' => 'middle_name',
             'last name' => 'last_name',
             'lastname' => 'last_name',
             'full name' => 'full_name',

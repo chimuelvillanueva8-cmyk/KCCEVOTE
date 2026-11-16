@@ -76,12 +76,12 @@ class Courses extends BaseController
             $courseCode = 'COURSE';
         }
 
-        if (! $this->model->insert([
+        if (! $this->model->insertWithNextId([
             'department_id' => $data['department_id'],
             'course_code' => substr($courseCode, 0, 32),
             'course_name' => $courseName,
             'status' => $data['status'] ?? 'Active',
-        ], false)) {
+        ])) {
             $errorMessage = 'Failed to add course. Database error: ' . json_encode($this->model->db->error());
             log_message('error', $errorMessage);
             error_log($errorMessage);

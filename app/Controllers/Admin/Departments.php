@@ -78,11 +78,11 @@ class Departments extends BaseController
             $departmentCode = 'DEPT';
         }
 
-        if (! $this->model->insert([
+        if (! $this->model->insertWithNextId([
             'department_code' => substr($departmentCode, 0, 32),
             'department_name' => $departmentName,
             'status' => $data['status'] ?? 'Active',
-        ], false)) {
+        ])) {
             $errorMessage = 'Failed to add department. Database error: ' . json_encode($this->model->db->error());
             log_message('error', $errorMessage);
             error_log($errorMessage);

@@ -239,7 +239,7 @@ class Student extends BaseController
             }
 
             $data['id'] = $id;
-            if (! $this->studentModel->insert($data)) {
+            if (! $this->studentModel->insert($data, false)) {
                 $db->transRollback();
                 return false;
             }

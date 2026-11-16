@@ -17,6 +17,8 @@ KEVS is a CodeIgniter 4 application for student registration, election setup, ca
 4. Point the web server document root at `public/`; do not expose the repository root.
 5. Start the app with `php spark serve` for local development, or configure Apache to serve `public/`.
 
+The Render Docker startup command runs pending CodeIgniter migrations before Apache starts. Ensure the configured database credentials and a recent database backup are available before deploying schema changes.
+
 There are no default administrator or student login credentials. For a first administrator, generate a password hash on the server with `php -r 'echo password_hash(readline("Initial admin password: "), PASSWORD_DEFAULT), PHP_EOL;'`, then insert the username and generated hash into `admins` using a trusted database client. Do not store the plaintext password or reuse sample credentials.
 
 `TestStudentSeeder` and `SampleElectionSeeder` contain development/demo data and refuse to run when `CI_ENVIRONMENT` is `production`.
@@ -43,5 +45,4 @@ Students with legacy image-only face enrollment must be re-enrolled by an admini
 ## Election-data limitation
 
 The current schema deliberately retains the existing association between a student's identity and their candidate selections. This preserves the current data model and workflow, but it does **not** provide secret ballots. Do not use this system for elections that require ballot secrecy without redesigning and migrating vote storage.
-
 

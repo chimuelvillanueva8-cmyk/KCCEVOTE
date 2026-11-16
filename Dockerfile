@@ -74,6 +74,5 @@ RUN mkdir -p /var/www/html/writable/cache \
 # Expose default HTTP port
 EXPOSE 80 10000
 
-# Start Apache in the foreground
-CMD ["apache2-foreground"]
-
+# Apply pending CodeIgniter migrations before serving requests.
+CMD ["sh", "-c", "php spark migrate && exec apache2-foreground"]

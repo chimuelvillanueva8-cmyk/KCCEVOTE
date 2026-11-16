@@ -1059,7 +1059,7 @@ body.dashboard-page .status-pill {
 
 body.dashboard-page .status-pill.status-open {
     background: rgba(252, 211, 77, 0.24);
-    color: #FCD34D;
+    color: #FFFFFF !important;
 }
 
 body.dashboard-page .status-pill.status-pending {

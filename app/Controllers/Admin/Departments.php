@@ -123,15 +123,52 @@ class Departments extends BaseController
             return $this->response->setJSON(['success' => false, 'message' => 'This department has courses assigned to it. Please remove or deactivate the courses first.']);
         }
 
-        if (! $this->model->delete($id)) {
-            log_message('error', 'Failed to delete department {departmentId}.', ['departmentId' => $id]);
+        $db = \Config\Database::connect();
+        $linkedStudents = $db->table('students')
+            ->where('department_id', $id)
+            ->countAllResults();
+
+        try {
+            $db->transBegin();
+
+            if ($linkedStudents > 0) {
+                $db->table('students')
+                    ->where('department_id', $id)
+                    ->update(['department_id' => null]);
+            }
+
+            $deleted = $db->table('departments')->where('id', $id)->delete();
+            if ($deleted === false || ! $db->transStatus() || $db->affectedRows() !== 1) {
+                $db->transRollback();
+                log_message('error', 'Failed to delete department {departmentId}. Database error: {error}', [
+                    'departmentId' => $id,
+                    'error' => $db->error()['message'] ?? 'No database error details available.',
+                ]);
+                return $this->response->setStatusCode(500)->setJSON([
+                    'success' => false,
+                    'message' => 'The department could not be deleted. Please try again or check the application logs.',
+                ]);
+            }
+
+            $db->transCommit();
+        } catch (\CodeIgniter\Database\Exceptions\DatabaseException $exception) {
+            $db->transRollback();
+            log_message(
+                'error',
+                'Failed to delete department {departmentId}: {error}',
+                ['departmentId' => $id, 'error' => $exception->getMessage()]
+            );
             return $this->response->setStatusCode(500)->setJSON([
                 'success' => false,
                 'message' => 'The department could not be deleted. Please try again or check the application logs.',
             ]);
         }
 
-        (new AuditLogModel())->record('DELETE', 'Deleted department ' . $department['department_name'] . '.');
+        $auditMessage = 'Deleted department ' . $department['department_name'] . '.';
+        if ($linkedStudents > 0) {
+            $auditMessage .= ' Cleared the department selection for ' . $linkedStudents . ' student account(s); saved department names were retained.';
+        }
+        (new AuditLogModel())->record('DELETE', $auditMessage);
         return $this->response->setJSON(['success' => true, 'message' => 'Department deleted.']);
     }
 

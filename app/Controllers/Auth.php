@@ -196,7 +196,8 @@ class Auth extends BaseController
                     'role'            => 'student',
                     'isLoggedIn'      => true,
                     'login_latitude'  => $latValue,
-                    'login_longitude' => $lngValue
+                    'login_longitude' => $lngValue,
+                    'campus_location_verified' => false,
                 ]);
                 (new AuditLogModel())->record('STUDENT LOGIN', 'Student logged in at ' . $loginAt . '.', $loginAt);
                 return redirect()->to('/voting');
@@ -225,24 +226,6 @@ class Auth extends BaseController
                     return $this->response->setJSON(['success' => false, 'message' => 'Face verification failed. Please try again.']);
                 }
 
-                $latitude = $this->request->getPost('latitude') ?? ($requestData['latitude'] ?? null);
-                $longitude = $this->request->getPost('longitude') ?? ($requestData['longitude'] ?? null);
-                $latValue = is_numeric($latitude) ? floatval($latitude) : null;
-                $lngValue = is_numeric($longitude) ? floatval($longitude) : null;
-
-                $locationCheck = $this->checkCampusLocation(
-                    $latValue,
-                    $lngValue,
-                    $requestData['accuracy'] ?? $this->request->getPost('accuracy')
-                );
-                if (! $locationCheck['success']) {
-                    return $this->response->setJSON([
-                        'success' => false,
-                        'code' => $locationCheck['code'],
-                        'message' => $locationCheck['message'],
-                    ]);
-                }
-                
                 $loginAt = date('Y-m-d H:i:s');
                 $studentModel = new \App\Models\StudentModel();
                 if (! $studentModel->update($session->get('temp_user_id'), [
@@ -265,10 +248,20 @@ class Auth extends BaseController
                     'full_name'       => $session->get('temp_user_name'),
                     'role'            => 'student',
                     'isLoggedIn'      => true,
-                    'login_latitude'  => $latValue,
-                    'login_longitude' => $lngValue
+                    'login_latitude'  => $session->get('temp_login_latitude'),
+                    'login_longitude' => $session->get('temp_login_longitude'),
+                    'campus_location_verified' => (bool) $session->get('temp_campus_location_verified')
             ]);
-            $session->remove(['temp_user_id', 'temp_user_type', 'temp_user_name', 'temp_student_id', 'temp_face_descriptor']);
+            $session->remove([
+                'temp_user_id',
+                'temp_user_type',
+                'temp_user_name',
+                'temp_student_id',
+                'temp_face_descriptor',
+                'temp_login_latitude',
+                'temp_login_longitude',
+                'temp_campus_location_verified',
+            ]);
             (new AuditLogModel())->record('STUDENT LOGIN', 'Student logged in using face verification at ' . $loginAt . '.', $loginAt);
             return $this->response->setJSON(['success' => true]);
         }
@@ -383,6 +376,7 @@ class Auth extends BaseController
             $session->setFlashdata('error', $locationCheck['message']);
             return redirect()->to('/login?action=student')->withInput();
         }
+        $campusLocationVerified = $this->isCampusLocationConfigured();
 
         $userModel = new UserModel();
         $student = $userModel->getStudent($studentId);
@@ -411,23 +405,13 @@ class Auth extends BaseController
             'temp_user_type'       => 'student',
             'temp_user_name'       => $student['full_name'],
             'temp_student_id'      => $student['student_id'],
-            'temp_face_descriptor' => json_encode(['descriptor' => array_values($registeredDescriptor)])
+            'temp_face_descriptor' => json_encode(['descriptor' => array_values($registeredDescriptor)]),
+            'temp_login_latitude'  => is_numeric($latitude) ? (float) $latitude : null,
+            'temp_login_longitude' => is_numeric($longitude) ? (float) $longitude : null,
+            'temp_campus_location_verified' => $campusLocationVerified,
         ]);
 
         return redirect()->to('/login?action=student&verify=face');
-    }
-
-    public function checkFaceLoginLocation()
-    {
-        $requestData = $this->request->getJSON(true) ?? [];
-        $latitude = $requestData['latitude'] ?? null;
-        $longitude = $requestData['longitude'] ?? null;
-
-        return $this->response->setJSON($this->checkCampusLocation(
-            is_numeric($latitude) ? (float) $latitude : null,
-            is_numeric($longitude) ? (float) $longitude : null,
-            $requestData['accuracy'] ?? null
-        ));
     }
 
     public function logout()

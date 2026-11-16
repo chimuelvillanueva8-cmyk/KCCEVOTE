@@ -26,6 +26,10 @@ class Voting extends BaseController
     protected function checkLocationAndLogoutIfNeeded(bool $requireSubmittedLocation = false)
     {
         $session = session();
+        if (! $requireSubmittedLocation && $session->get('campus_location_verified')) {
+            return null;
+        }
+
         $currentLatitude = $this->request->getPost('latitude') ?? $this->request->getGet('latitude');
         $currentLongitude = $this->request->getPost('longitude') ?? $this->request->getGet('longitude');
 
@@ -48,7 +52,7 @@ class Voting extends BaseController
                 'Student was logged out because campus location verification failed at ' . $logoutAt . '.',
                 $logoutAt
             );
-            $session->remove(['user_id', 'student_id', 'full_name', 'username', 'role', 'isLoggedIn', 'login_latitude', 'login_longitude', 'temp_user_id', 'temp_user_type', 'temp_user_name', 'temp_student_id', 'temp_face_descriptor']);
+            $session->remove(['user_id', 'student_id', 'full_name', 'username', 'role', 'isLoggedIn', 'login_latitude', 'login_longitude', 'campus_location_verified', 'temp_user_id', 'temp_user_type', 'temp_user_name', 'temp_student_id', 'temp_face_descriptor', 'temp_login_latitude', 'temp_login_longitude', 'temp_campus_location_verified']);
             return redirect()->to('/login?action=student')->with('error', 'A valid campus location is required to access the student portal.');
         }
 
@@ -75,7 +79,7 @@ class Voting extends BaseController
             $logoutAt = date('Y-m-d H:i:s');
             $reason = $student ? 'Inactive student session ended' : 'Student session ended because the account no longer exists';
             (new AuditLogModel())->record('STUDENT LOGOUT', $reason . ' at ' . $logoutAt . '.', $logoutAt);
-            $session->remove(['user_id', 'student_id', 'full_name', 'username', 'role', 'isLoggedIn', 'login_latitude', 'login_longitude']);
+            $session->remove(['user_id', 'student_id', 'full_name', 'username', 'role', 'isLoggedIn', 'login_latitude', 'login_longitude', 'campus_location_verified']);
             return redirect()->to('/login?action=student')->with('error', 'Your account is inactive and cannot vote. Please contact the administrator.');
         }
 
@@ -136,7 +140,7 @@ class Voting extends BaseController
         $student = $studentModel->find($studentId);
         $isInactive = $student && (empty($student['is_active']) && ($student['status'] ?? '') !== 'Active');
         if (!$student || $isInactive) {
-            $session->remove(['user_id', 'student_id', 'full_name', 'username', 'role', 'isLoggedIn', 'login_latitude', 'login_longitude']);
+            $session->remove(['user_id', 'student_id', 'full_name', 'username', 'role', 'isLoggedIn', 'login_latitude', 'login_longitude', 'campus_location_verified']);
             return redirect()->to('/login?action=student')->with('error', 'Your account is inactive and cannot vote. Please contact the administrator.');
         }
 

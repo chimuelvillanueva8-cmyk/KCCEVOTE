@@ -519,6 +519,7 @@
                     .kevs-btn, .kevs-scan { display:inline-flex; align-items:center; justify-content:center; gap:8px; box-sizing:border-box; min-height:44px; line-height:1.25; text-align:center; }
                     .kevs-btn { background: linear-gradient(90deg, #1266D6 0%, #1677FF 100%); color:#fff; border:none; padding:12px 18px; border-radius:10px; font-weight:700; }
                     .kevs-scan { background: #F5C542; color:#061A33; border:none; padding:12px 18px; border-radius:10px; font-weight:700; }
+                    body.dashboard-page.login-page .kevs-scan { color: #061A33; }
                     .kevs-or { display:flex;align-items:center;gap:12px;margin:16px 0;color:#B8C7D9 }
                     .kevs-or hr{flex:1;border:none;height:1px;background:#24476B}
                     .password-control { position:relative; }
@@ -569,7 +570,7 @@
 
                             <input type="hidden" name="latitude" id="latitude">
                             <input type="hidden" name="longitude" id="longitude">
-                            <div id="locationStatus" class="mt-2 small text-muted">Checking campus location...</div>
+                            <div id="locationStatus" class="mt-2 small text-muted">Campus location is checked when you log in.</div>
 
                             <div style="display:flex;gap:10px;margin-top:14px;">
                                 <button type="submit" class="kevs-btn" style="flex:1;">Login Using Password</button>
@@ -636,11 +637,6 @@
                         const latitudeInput = document.getElementById('faceLoginLatitude');
                         const longitudeInput = document.getElementById('faceLoginLongitude');
                         const accuracyInput = document.getElementById('faceLoginAccuracy');
-                        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
-                        if (!csrfToken) {
-                            alert('Security token is missing. Refresh the page and try again.');
-                            return;
-                        }
 
                         const originalLabel = scanBtn.innerHTML;
                         scanBtn.disabled = true;
@@ -666,46 +662,11 @@
                             return;
                         }
 
-                        navigator.geolocation.getCurrentPosition(async position => {
-                            try {
-                                const response = await fetch('<?= base_url('login/face-location-check') ?>', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'X-CSRF-TOKEN': csrfToken
-                                    },
-                                    body: JSON.stringify({
-                                        latitude: position.coords.latitude,
-                                        longitude: position.coords.longitude,
-                                        accuracy: position.coords.accuracy
-                                    })
-                                });
-                                const result = await response.json();
-                                if (!response.ok || !result.success) {
-                                    const message = result.message || 'Campus location could not be verified. Face login cannot continue.';
-                                    if (locationStatus) {
-                                        locationStatus.textContent = message;
-                                        locationStatus.className = 'mt-2 small text-danger';
-                                    }
-                                    alert(message);
-                                    return;
-                                }
-
-                                latitudeInput.value = position.coords.latitude;
-                                longitudeInput.value = position.coords.longitude;
-                                accuracyInput.value = position.coords.accuracy;
-                                startForm.requestSubmit();
-                            } catch (error) {
-                                console.error('Unable to verify campus location for face login:', error);
-                                const message = 'Unable to verify your location. Check your connection and try again.';
-                                if (locationStatus) {
-                                    locationStatus.textContent = message;
-                                    locationStatus.className = 'mt-2 small text-danger';
-                                }
-                                alert(message);
-                            } finally {
-                                restoreButton();
-                            }
+                        navigator.geolocation.getCurrentPosition(position => {
+                            latitudeInput.value = position.coords.latitude;
+                            longitudeInput.value = position.coords.longitude;
+                            accuracyInput.value = position.coords.accuracy;
+                            startForm.requestSubmit();
                         }, error => {
                             const messages = {
                                 1: 'Location permission is denied. Allow location access in your browser settings to use face login.',
@@ -1077,42 +1038,6 @@
                     
                     // Load face-api models from the bundled assets.
                     const MODEL_URL = '<?= base_url('js/models/') ?>';
-                    const campusLocationRequired = <?= json_encode($campus_location_required ?? false) ?>;
-                    function getFaceLoginLocation() {
-                        if (!campusLocationRequired) {
-                            return Promise.resolve({ latitude: null, longitude: null, accuracy: null });
-                        }
-
-                        return new Promise((resolve, reject) => {
-                            if (!navigator.geolocation) {
-                                const error = new Error('This browser does not support location access. Enable a supported browser or contact the administrator.');
-                                error.locationError = true;
-                                reject(error);
-                                return;
-                            }
-
-                            navigator.geolocation.getCurrentPosition(position => {
-                                resolve({
-                                    latitude: position.coords.latitude,
-                                    longitude: position.coords.longitude,
-                                    accuracy: position.coords.accuracy
-                                });
-                            }, error => {
-                                const messages = {
-                                    1: 'Location permission is blocked. Allow location access in your browser settings, then retry.',
-                                    2: 'Your device could not determine its location. Check GPS or network location and retry.',
-                                    3: 'The location request timed out. Move near a window or outdoors, then retry.'
-                                };
-                                const locationError = new Error(messages[error.code] || 'Location is unavailable. Check your device settings and retry.');
-                                locationError.locationError = true;
-                                reject(locationError);
-                            }, {
-                                enableHighAccuracy: true,
-                                timeout: 15000,
-                                maximumAge: 0
-                            });
-                        });
-                    }
                     console.log('Loading face-api models...');
                     const faceModelsReady = Promise.all([
                         faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
@@ -1663,8 +1588,6 @@
                     }
                     
                     async function verifyFaceWithFaceApi(currentDescriptor) {
-                        const location = await getFaceLoginLocation();
-
                         const response = await fetch('<?= base_url('login/face-verify') ?>', {
                             method: 'POST',
                             headers: {
@@ -1672,39 +1595,11 @@
                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
                             },
                             body: JSON.stringify({
-                                face_descriptor: JSON.stringify(Array.from(currentDescriptor)),
-                                latitude: location.latitude,
-                                longitude: location.longitude,
-                                accuracy: location.accuracy
+                                face_descriptor: JSON.stringify(Array.from(currentDescriptor))
                             })
                         });
                         const result = await response.json();
-                        return {
-                            success: response.ok && result.success,
-                            code: result.code,
-                            message: result.message
-                        };
-                    }
-
-                    function showLocationRetry(message) {
-                        const mainStatus = document.getElementById('mainStatus');
-                        const subStatus = document.getElementById('subStatus');
-                        const progressContainer = document.getElementById('progressContainer');
-                        const startBtn = document.getElementById('startCameraBtn');
-                        const video = document.getElementById('video');
-
-                        if (video && video.srcObject) {
-                            video.srcObject.getTracks().forEach(track => track.stop());
-                            video.srcObject = null;
-                        }
-                        if (progressContainer) progressContainer.style.display = 'none';
-                        if (mainStatus) mainStatus.textContent = 'Location verification needed';
-                        if (subStatus) subStatus.textContent = message;
-                        if (startBtn) {
-                            startBtn.disabled = false;
-                            startBtn.textContent = 'Retry Verification';
-                            startBtn.style.display = 'block';
-                        }
+                        return { success: response.ok && result.success, message: result.message };
                     }
 
                     async function performStrictFaceMatch(currentDescriptor) {
@@ -1713,10 +1608,8 @@
                         const glowRing = document.getElementById('glowRing');
 
                         try {
-                            mainStatus.textContent = 'Face matched; checking location';
-                            subStatus.textContent = campusLocationRequired
-                                ? 'Confirming your location before completing login...'
-                                : 'Completing secure login...';
+                            mainStatus.textContent = 'Completing secure login';
+                            subStatus.textContent = 'Finishing face verification...';
                             const matchResult = await verifyFaceWithFaceApi(currentDescriptor);
                             if (matchResult.success) {
                                 glowRing.style.animation = 'none';
@@ -1725,10 +1618,6 @@
                                 mainStatus.style.display = 'none';
                                 subStatus.style.display = 'none';
                                 window.location.href = '<?= base_url('voting') ?>';
-                            } else if (matchResult.code && matchResult.code.startsWith('location_')) {
-                                glowRing.style.borderColor = '#f59e0b';
-                                glowRing.style.boxShadow = '0 0 50px rgba(245, 158, 11, 0.6)';
-                                showLocationRetry(matchResult.message || 'Campus location could not be verified. Check your location settings and retry.');
                             } else {
                                 mainStatus.textContent = 'Face verification failed';
                                 subStatus.textContent = matchResult.message || 'Please try again or use your password to log in.';
@@ -1741,10 +1630,6 @@
                             }
                         } catch (err) {
                             console.error('Face matching error:', err);
-                            if (campusLocationRequired && err.locationError) {
-                                showLocationRetry(err.message);
-                                return;
-                            }
                             mainStatus.textContent = 'Verification Error';
                             subStatus.textContent = 'Retrying...';
                             
@@ -1873,8 +1758,6 @@
                             }
                         );
                     }
-
-                    requestCampusLocation();
 
                     // Handle student form submission specifically
                     const studentForm = document.getElementById('studentLoginForm');

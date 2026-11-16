@@ -11,7 +11,6 @@ $routes->get('login', 'Auth::login');
 $routes->get('_debug/session', 'DevDebug::session');
 $routes->post('login/attempt', 'Auth::attemptLogin');
 $routes->post('login/face-start', 'Auth::startFaceLogin');
-$routes->post('login/face-location-check', 'Auth::checkFaceLoginLocation');
 $routes->get('login/face-reference', 'Auth::faceReference');
 $routes->post('login/face-reference', 'Auth::saveFaceReference');
 

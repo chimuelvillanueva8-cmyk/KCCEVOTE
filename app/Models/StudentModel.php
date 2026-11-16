@@ -10,6 +10,7 @@ class StudentModel extends Model
     protected $primaryKey = 'id';
 
     protected $allowedFields = [
+        'id',
         'student_id',
         'full_name',
         'first_name',

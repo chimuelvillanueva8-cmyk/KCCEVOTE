@@ -146,6 +146,7 @@ class Student extends BaseController
     public function store()
     {
         $data = $this->request->getPost();
+        unset($data['id']);
 
         // sanitize student_id to digits only
         if (!empty($data['student_id'])) {
@@ -180,18 +181,87 @@ class Student extends BaseController
         $data['is_active'] = $data['is_active'] ?? 1;
         $data['status'] = ((int) $data['is_active'] === 1) ? 'Active' : 'Inactive';
 
-        if ($this->studentModel->insert($data)) {
-            $id = $this->studentModel->getInsertID();
+        try {
+            $id = $this->insertStudentWithAllocatedId($data);
+        } catch (\Throwable $exception) {
+            log_message('error', 'Student registration failed: ' . $exception->getMessage());
+            return $this->response->setStatusCode(500)->setJSON([
+                'success' => false,
+                'message' => 'Unable to save the student right now. Please try again.',
+            ]);
+        }
+
+        if ($id !== false) {
             (new AuditLogModel())->record('CREATE', 'Created student account ' . $data['student_id'] . '.');
             return $this->response->setJSON(['success' => true, 'id' => $id, 'password' => $plainPassword]);
         }
 
-        return $this->response->setJSON(['success' => false, 'errors' => $this->studentModel->errors()]);
+        $errors = $this->studentModel->errors();
+        if ($errors === []) {
+            return $this->response->setStatusCode(500)->setJSON([
+                'success' => false,
+                'message' => 'Unable to save the student right now. Please try again.',
+            ]);
+        }
+
+        return $this->response->setJSON(['success' => false, 'errors' => $errors]);
+    }
+
+    protected function insertStudentWithAllocatedId(array $data)
+    {
+        $db = $this->studentModel->db;
+        if (! $db->transBegin()) {
+            throw new \RuntimeException('Unable to start student ID allocation transaction.');
+        }
+
+        try {
+            $allocator = $db->query(
+                'SELECT next_id FROM student_id_allocator WHERE allocator_id = 1 FOR UPDATE'
+            )->getRowArray();
+            if (! $allocator) {
+                throw new \RuntimeException('Student ID allocator is not initialized.');
+            }
+
+            $maxStudentId = (int) $db->table('students')
+                ->selectMax('id', 'max_id')
+                ->get()
+                ->getRow()
+                ->max_id;
+            $id = max((int) $allocator['next_id'], $maxStudentId + 1);
+            if ($id > 4294967295) {
+                throw new \RuntimeException('Student IDs have exceeded the supported integer range.');
+            }
+
+            if ($db->table('student_id_allocator')
+                ->where('allocator_id', 1)
+                ->update(['next_id' => $id + 1]) === false) {
+                throw new \RuntimeException('Unable to reserve a student ID: ' . json_encode($db->error()));
+            }
+
+            $data['id'] = $id;
+            if (! $this->studentModel->insert($data)) {
+                $db->transRollback();
+                return false;
+            }
+
+            if (! $db->transStatus()) {
+                throw new \RuntimeException('Student registration transaction failed.');
+            }
+            if (! $db->transCommit()) {
+                throw new \RuntimeException('Student registration transaction could not be committed.');
+            }
+
+            return $id;
+        } catch (\Throwable $exception) {
+            $db->transRollback();
+            throw $exception;
+        }
     }
 
     public function update($id)
     {
         $data = $this->request->getPost();
+        unset($data['id']);
         $existing = $this->studentModel->find($id);
         if (!$existing) {
             return $this->response->setJSON(['success' => false, 'errors' => ['Student not found.']]);
@@ -483,8 +553,18 @@ class Student extends BaseController
                 $this->studentModel->update($existing['id'], $record);
                 $updated++;
             } else {
-                $this->studentModel->insert($record);
-                $imported++;
+                try {
+                    if ($this->insertStudentWithAllocatedId($record) !== false) {
+                        $imported++;
+                    } else {
+                        $validationErrors = $this->studentModel->errors();
+                        $errors[] = 'Row ' . ($index + 2) . ': '
+                            . ($validationErrors ? implode(' ', $validationErrors) : 'Unable to save student.');
+                    }
+                } catch (\Throwable $exception) {
+                    log_message('error', 'Student import insert failed for row ' . ($index + 2) . ': ' . $exception->getMessage());
+                    $errors[] = 'Row ' . ($index + 2) . ': Unable to save student.';
+                }
             }
         }
 

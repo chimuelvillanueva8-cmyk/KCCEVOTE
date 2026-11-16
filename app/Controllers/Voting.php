@@ -296,6 +296,35 @@ class Voting extends BaseController
                 return redirect()->back()->with('error', 'You have already submitted a ballot for this election.');
             }
 
+            $voteStage = 'reserving ballot IDs';
+            $allocator = $db->query(
+                'SELECT next_id FROM vote_id_allocator WHERE allocator_id = 1 FOR UPDATE'
+            )->getRowArray();
+            if (! $allocator) {
+                throw new \RuntimeException('Vote ID allocator is not initialized.');
+            }
+
+            $maxVoteId = (int) $db->table('votes')
+                ->selectMax('id', 'max_id')
+                ->get()
+                ->getRow()
+                ->max_id;
+            $firstVoteId = max((int) $allocator['next_id'], $maxVoteId + 1);
+            $lastVoteId = $firstVoteId + count($voteRows) - 1;
+            if ($lastVoteId > 4294967295) {
+                throw new \RuntimeException('Vote IDs have exceeded the supported integer range.');
+            }
+            if ($db->table('vote_id_allocator')
+                ->where('allocator_id', 1)
+                ->update(['next_id' => $lastVoteId + 1]) === false) {
+                throw new \RuntimeException('Unable to reserve vote IDs: ' . json_encode($db->error()));
+            }
+
+            foreach ($voteRows as $index => &$voteRow) {
+                $voteRow['id'] = $firstVoteId + $index;
+            }
+            unset($voteRow);
+
             $voteStage = 'inserting the ballot';
             $insertedVoteCount = $db->table('votes')->insertBatch($voteRows);
             if ($insertedVoteCount !== count($voteRows)) {

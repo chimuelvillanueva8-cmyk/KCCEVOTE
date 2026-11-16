@@ -283,34 +283,43 @@ class Voting extends BaseController
             return redirect()->back()->with('error', 'Your vote could not be saved. Please try again.');
         }
 
+        $voteStage = 'locking the election';
         try {
             $lockedElection = $db->query('SELECT id, status FROM elections WHERE id = ? FOR UPDATE', [$electionId])->getRowArray();
             if (! $lockedElection || strtolower((string) $lockedElection['status']) !== 'open') {
                 $db->transRollback();
                 return redirect()->back()->with('error', 'The selected election is not available.');
             }
+            $voteStage = 'checking for an existing ballot';
             if ($voteModel->hasVoted($studentId, $electionId)) {
                 $db->transRollback();
                 return redirect()->back()->with('error', 'You have already submitted a ballot for this election.');
             }
 
+            $voteStage = 'inserting the ballot';
             if ($db->table('votes')->insertBatch($voteRows) === false) {
                 throw new \RuntimeException('Vote batch insert failed: ' . json_encode($db->error()));
             }
 
+            $voteStage = 'checking the transaction';
             if (! $db->transStatus()) {
                 throw new \RuntimeException('Vote transaction failed.');
             }
+            $voteStage = 'committing the ballot';
             if (! $db->transCommit()) {
                 throw new \RuntimeException('Vote transaction could not be committed.');
             }
         } catch (\Throwable $exception) {
             $db->transRollback();
+            $databaseError = $db->error();
+            $diagnostic = 'Vote submission failed while ' . $voteStage
+                . ': ' . $exception->getMessage()
+                . '; database error: ' . json_encode($databaseError);
             log_message(
                 'error',
-                'Vote submission failed for student ' . $studentId . ' and election ' . $electionId . ': '
-                . $exception->getMessage() . '; database error: ' . json_encode($db->error())
+                $diagnostic
             );
+            error_log($diagnostic);
             return redirect()->back()->with('error', 'Your vote could not be saved. Please try again.');
         }
         (new AuditLogModel())->record(

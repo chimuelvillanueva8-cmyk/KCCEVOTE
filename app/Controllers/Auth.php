@@ -9,6 +9,67 @@ use App\Models\UserModel;
 
 class Auth extends BaseController
 {
+    private function checkCampusLocation(?float $latitude, ?float $longitude, mixed $accuracy = null): array
+    {
+        $settings = $this->getCampusSettings();
+        if (! CampusLocation::isConfigured($settings) || CampusLocation::isWithinRange($latitude, $longitude, $settings)) {
+            return ['success' => true];
+        }
+
+        $coordinatesAreValid = $latitude !== null
+            && $longitude !== null
+            && is_finite($latitude)
+            && is_finite($longitude)
+            && $latitude >= -90
+            && $latitude <= 90
+            && $longitude >= -180
+            && $longitude <= 180;
+
+        if (! $coordinatesAreValid) {
+            return [
+                'success' => false,
+                'code' => 'location_unavailable',
+                'message' => 'Campus location is required. Allow location access and try again.',
+            ];
+        }
+
+        if (
+            is_numeric($accuracy)
+            && is_numeric($settings['campus_latitude'] ?? null)
+            && is_numeric($settings['campus_longitude'] ?? null)
+            && is_numeric($settings['campus_access_radius'] ?? null)
+        ) {
+            $accuracy = max(0.0, (float) $accuracy);
+            $campusLatitude = (float) $settings['campus_latitude'];
+            $campusLongitude = (float) $settings['campus_longitude'];
+            $radius = (float) $settings['campus_access_radius'];
+            if (
+                is_finite($accuracy)
+                && is_finite($campusLatitude)
+                && is_finite($campusLongitude)
+                && is_finite($radius)
+                && $campusLatitude >= -90
+                && $campusLatitude <= 90
+                && $campusLongitude >= -180
+                && $campusLongitude <= 180
+                && $radius >= 0
+                && CampusLocation::calculateDistanceMeters($campusLatitude, $campusLongitude, $latitude, $longitude) <= $radius + $accuracy
+            ) {
+                return [
+                    'success' => false,
+                    'code' => 'location_uncertain',
+                    'message' => 'Your GPS accuracy is not sufficient to confirm that you are within the campus radius. Move closer to campus or improve your GPS signal and try again.',
+                ];
+            }
+        }
+
+        return [
+            'success' => false,
+            'code' => 'location_outside',
+            'message' => 'Your location is outside the permitted campus access radius. Face login is unavailable outside the campus radius.',
+        ];
+    }
+
     public function login()
     {
         $session = session();
@@ -169,67 +230,16 @@ class Auth extends BaseController
                 $latValue = is_numeric($latitude) ? floatval($latitude) : null;
                 $lngValue = is_numeric($longitude) ? floatval($longitude) : null;
 
-                if (! $this->isWithinCampusRange($latValue, $lngValue)) {
-                    $settings = $this->getCampusSettings();
-                    $accuracy = $requestData['accuracy'] ?? $this->request->getPost('accuracy');
-                    $code = 'location_unavailable';
-                    $message = 'Campus location could not be determined. Enable location access and retry verification.';
-
-                    $coordinatesAreValid = $latValue !== null
-                        && $lngValue !== null
-                        && is_finite($latValue)
-                        && is_finite($lngValue)
-                        && $latValue >= -90
-                        && $latValue <= 90
-                        && $lngValue >= -180
-                        && $lngValue <= 180;
-
-                    if ($coordinatesAreValid) {
-                        $code = 'location_outside';
-                        $message = 'Your location is outside the permitted campus access radius. Face verification is complete, but access is still restricted by campus policy.';
-
-                        if (
-                            is_numeric($accuracy)
-                            && is_numeric($settings['campus_latitude'] ?? null)
-                            && is_numeric($settings['campus_longitude'] ?? null)
-                            && is_numeric($settings['campus_access_radius'] ?? null)
-                        ) {
-                            $accuracy = max(0.0, (float) $accuracy);
-                            $campusLatitude = (float) $settings['campus_latitude'];
-                            $campusLongitude = (float) $settings['campus_longitude'];
-                            $radius = (float) $settings['campus_access_radius'];
-                            if (
-                                is_finite($accuracy)
-                                && is_finite($campusLatitude)
-                                && is_finite($campusLongitude)
-                                && is_finite($radius)
-                                && $campusLatitude >= -90
-                                && $campusLatitude <= 90
-                                && $campusLongitude >= -180
-                                && $campusLongitude <= 180
-                                && $radius >= 0
-                            ) {
-                                $distance = CampusLocation::calculateDistanceMeters(
-                                    $campusLatitude,
-                                    $campusLongitude,
-                                    $latValue,
-                                    $lngValue
-                                );
-
-                                if ($distance <= $radius + $accuracy) {
-                                    $code = 'location_uncertain';
-                                    $message = 'Your GPS reading may be too inaccurate to confirm that you are within the campus radius. Move outdoors and retry verification.';
-                                }
-                            }
-                        }
-                    } else {
-                        $message = 'The location reading is invalid or unavailable. Check your device location settings and retry verification.';
-                    }
-
+                $locationCheck = $this->checkCampusLocation(
+                    $latValue,
+                    $lngValue,
+                    $requestData['accuracy'] ?? $this->request->getPost('accuracy')
+                );
+                if (! $locationCheck['success']) {
                     return $this->response->setJSON([
                         'success' => false,
-                        'code' => $code,
-                        'message' => $message,
+                        'code' => $locationCheck['code'],
+                        'message' => $locationCheck['message'],
                     ]);
                 }
                 
@@ -362,6 +372,18 @@ class Auth extends BaseController
             return redirect()->back()->withInput();
         }
 
+        $latitude = $this->request->getPost('latitude');
+        $longitude = $this->request->getPost('longitude');
+        $locationCheck = $this->checkCampusLocation(
+            is_numeric($latitude) ? (float) $latitude : null,
+            is_numeric($longitude) ? (float) $longitude : null,
+            $this->request->getPost('accuracy')
+        );
+        if (! $locationCheck['success']) {
+            $session->setFlashdata('error', $locationCheck['message']);
+            return redirect()->to('/login?action=student')->withInput();
+        }
+
         $userModel = new UserModel();
         $student = $userModel->getStudent($studentId);
 
@@ -393,6 +415,19 @@ class Auth extends BaseController
         ]);
 
         return redirect()->to('/login?action=student&verify=face');
+    }
+
+    public function checkFaceLoginLocation()
+    {
+        $requestData = $this->request->getJSON(true) ?? [];
+        $latitude = $requestData['latitude'] ?? null;
+        $longitude = $requestData['longitude'] ?? null;
+
+        return $this->response->setJSON($this->checkCampusLocation(
+            is_numeric($latitude) ? (float) $latitude : null,
+            is_numeric($longitude) ? (float) $longitude : null,
+            $requestData['accuracy'] ?? null
+        ));
     }
 
     public function logout()

@@ -582,6 +582,9 @@
                         <form id="startFaceForm" action="<?= base_url('login/face-start') ?>" method="POST">
                             <?= csrf_field() ?>
                             <input type="hidden" name="student_id" id="faceStudentId" />
+                            <input type="hidden" name="latitude" id="faceLoginLatitude" />
+                            <input type="hidden" name="longitude" id="faceLoginLongitude" />
+                            <input type="hidden" name="accuracy" id="faceLoginAccuracy" />
                             <div style="display:flex;gap:10px;align-items:center;">
                                 <button type="button" id="scanFaceBtn" class="kevs-scan" style="flex:1;"><i class="bi bi-camera-video-fill" style="margin-right:8px"></i> Face Login</button>
                             </div>
@@ -613,16 +616,114 @@
 
                     // Handle Scan Face submit (student login only)
                     const scanBtn = document.getElementById('scanFaceBtn');
-                    if (scanBtn) scanBtn.addEventListener('click', ()=>{
+                    const campusLocationRequired = <?= json_encode($campus_location_required ?? false) ?>;
+                    if (scanBtn) scanBtn.addEventListener('click', async () => {
                         const sidEl = document.getElementById('loginStudentId');
                         const sid = (sidEl ? sidEl.value : '').toString().trim();
                         if (!sid) { alert('Please enter your Student ID first.'); return; }
+
                         const faceInput = document.getElementById('faceStudentId');
-                        if (faceInput) {
-                            faceInput.value = sid;
-                            const startForm = document.getElementById('startFaceForm');
-                            if (startForm) startForm.submit();
+                        const startForm = document.getElementById('startFaceForm');
+                        if (!faceInput || !startForm) return;
+                        faceInput.value = sid;
+
+                        if (!campusLocationRequired) {
+                            startForm.requestSubmit();
+                            return;
                         }
+
+                        const locationStatus = document.getElementById('locationStatus');
+                        const latitudeInput = document.getElementById('faceLoginLatitude');
+                        const longitudeInput = document.getElementById('faceLoginLongitude');
+                        const accuracyInput = document.getElementById('faceLoginAccuracy');
+                        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+                        if (!csrfToken) {
+                            alert('Security token is missing. Refresh the page and try again.');
+                            return;
+                        }
+
+                        const originalLabel = scanBtn.innerHTML;
+                        scanBtn.disabled = true;
+                        scanBtn.textContent = 'Checking Location...';
+                        if (locationStatus) {
+                            locationStatus.textContent = 'Checking your location before face login...';
+                            locationStatus.className = 'mt-2 small text-muted';
+                        }
+
+                        const restoreButton = () => {
+                            scanBtn.disabled = false;
+                            scanBtn.innerHTML = originalLabel;
+                        };
+
+                        if (!navigator.geolocation) {
+                            const message = 'Location access is unavailable in this browser. Enable a supported browser location service and try again.';
+                            if (locationStatus) {
+                                locationStatus.textContent = message;
+                                locationStatus.className = 'mt-2 small text-danger';
+                            }
+                            alert(message);
+                            restoreButton();
+                            return;
+                        }
+
+                        navigator.geolocation.getCurrentPosition(async position => {
+                            try {
+                                const response = await fetch('<?= base_url('login/face-location-check') ?>', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': csrfToken
+                                    },
+                                    body: JSON.stringify({
+                                        latitude: position.coords.latitude,
+                                        longitude: position.coords.longitude,
+                                        accuracy: position.coords.accuracy
+                                    })
+                                });
+                                const result = await response.json();
+                                if (!response.ok || !result.success) {
+                                    const message = result.message || 'Campus location could not be verified. Face login cannot continue.';
+                                    if (locationStatus) {
+                                        locationStatus.textContent = message;
+                                        locationStatus.className = 'mt-2 small text-danger';
+                                    }
+                                    alert(message);
+                                    return;
+                                }
+
+                                latitudeInput.value = position.coords.latitude;
+                                longitudeInput.value = position.coords.longitude;
+                                accuracyInput.value = position.coords.accuracy;
+                                startForm.requestSubmit();
+                            } catch (error) {
+                                console.error('Unable to verify campus location for face login:', error);
+                                const message = 'Unable to verify your location. Check your connection and try again.';
+                                if (locationStatus) {
+                                    locationStatus.textContent = message;
+                                    locationStatus.className = 'mt-2 small text-danger';
+                                }
+                                alert(message);
+                            } finally {
+                                restoreButton();
+                            }
+                        }, error => {
+                            const messages = {
+                                1: 'Location permission is denied. Allow location access in your browser settings to use face login.',
+                                2: 'Your device could not determine its location. Check GPS or network location and try again.',
+                                3: 'Location request timed out. Move near a window or outdoors and try again.'
+                            };
+                            const message = messages[error.code] || 'Location is unavailable. Check your device settings and try again.';
+                            if (locationStatus) {
+                                locationStatus.textContent = message;
+                                locationStatus.className = 'mt-2 small text-danger';
+                            }
+                            alert(message);
+                            restoreButton();
+                        }, {
+                            enableHighAccuracy: true,
+                            timeout: 15000,
+                            maximumAge: 0
+                        });
                     });
 
                     // Enforce digits-only for Student ID (prevent letters)

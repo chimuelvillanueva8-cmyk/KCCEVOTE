@@ -447,6 +447,25 @@ class Student extends BaseController
         $rows[] = array_combine($headers, $values);
     }
 
+    protected function importFieldForHeader(string $header, array $fieldMap): ?string
+    {
+        $key = strtolower(trim($header));
+        $key = trim((string) preg_replace('/[^a-z0-9]+/', ' ', $key));
+        if (isset($fieldMap[$key])) {
+            return $fieldMap[$key];
+        }
+
+        $compactKey = str_replace(' ', '', $key);
+        if (
+            (str_contains($compactKey, 'student') && preg_match('/(id|number|num|no|code)/', $compactKey))
+            || in_array($compactKey, ['idnumber', 'idnum', 'idno', 'schoolid', 'lrn'], true)
+        ) {
+            return 'student_id';
+        }
+
+        return null;
+    }
+
     public function import()
     {
         $file = $this->request->getFile('student_file');
@@ -504,8 +523,24 @@ class Student extends BaseController
         $fieldMap = [
             'student id' => 'student_id',
             'student id number' => 'student_id',
+            'student id no' => 'student_id',
+            'student id num' => 'student_id',
             'student number' => 'student_id',
+            'student no' => 'student_id',
+            'student num' => 'student_id',
+            'roll number' => 'student_id',
+            'roll no' => 'student_id',
+            'registration number' => 'student_id',
+            'registration no' => 'student_id',
+            'enrollment number' => 'student_id',
+            'serial number' => 'student_id',
+            'sr no' => 'student_id',
             'studentid' => 'student_id',
+            'id number' => 'student_id',
+            'id no' => 'student_id',
+            'id num' => 'student_id',
+            'school id' => 'student_id',
+            'lrn' => 'student_id',
             'id' => 'student_id',
             'first name' => 'first_name',
             'firstname' => 'first_name',
@@ -556,9 +591,7 @@ class Student extends BaseController
         foreach ($rows as $index => $row) {
             $record = [];
             foreach ($row as $header => $value) {
-                $key = strtolower(trim((string) $header));
-                $key = trim((string) preg_replace('/[^a-z0-9]+/', ' ', $key));
-                $field = $fieldMap[$key] ?? null;
+                $field = $this->importFieldForHeader((string) $header, $fieldMap);
                 if ($field) {
                     $record[$field] = trim((string) $value);
                 }

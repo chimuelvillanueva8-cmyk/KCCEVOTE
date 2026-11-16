@@ -38,6 +38,7 @@ $routes->post('register/store', 'Auth::store');
 $routes->get('register-new', 'Auth::registerNew');
 $routes->post('register/submit', 'Auth::registerSubmit');
 $routes->get('logout', 'Auth::logout');
+$routes->post('auth/logout', 'Auth::logout');
 $routes->post('api/check-student-id', 'Auth::checkStudentId');
 $routes->post('auth/check-face-registered', 'Auth::checkFaceRegistered');
 $routes->get('api/public-stats', 'PublicStatsController::getStats');

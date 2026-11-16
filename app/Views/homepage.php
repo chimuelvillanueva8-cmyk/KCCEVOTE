@@ -80,7 +80,7 @@
             </div>
             <div class="header-actions">
                 <a href="<?= base_url('login') ?>" class="btn btn-outline">Login</a>
-                <a href="<?= base_url('#analytics') ?>" class="btn btn-gradient">View Results</a>
+                <a href="<?= base_url('admin/results') ?>" class="btn btn-gradient">View Results</a>
             </div>
         </div>
     </header>
@@ -106,7 +106,7 @@
                 </a>
             </li>
             <li class="burger-nav-item" role="listitem">
-                <a href="<?= base_url('#analytics') ?>" class="burger-nav-link" role="menuitem">
+                <a href="<?= base_url('admin/results') ?>" class="burger-nav-link" role="menuitem">
                     <span class="burger-nav-icon"><i class="bi bi-bar-chart"></i></span>
                     <span class="burger-nav-text">View Results</span>
                 </a>
@@ -119,7 +119,7 @@
         <p style="max-width:800px;margin:12px auto;color:#4b5563">KEVS is a secure, transparent and easy-to-use online voting platform. Vote anytime, anywhere.</p>
         <div class="buttons">
             <a href="<?= base_url('login') ?>" class="btn btn-login">Login Now</a>
-            <a href="<?= base_url('admin/elections') ?>" class="btn btn-results">View Results</a>
+            <a href="<?= base_url('admin/results') ?>" class="btn btn-results">View Results</a>
         </div>
     </main>
 

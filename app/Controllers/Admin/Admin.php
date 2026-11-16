@@ -814,12 +814,47 @@ class Admin extends \App\Controllers\BaseController
 
     public function deleteAnnouncement(int $id)
     {
-        $model = new AnnouncementModel();
-        if (! $model->delete($id)) {
-            return redirect()->back()->with('error', 'Failed to delete announcement.');
+        $db = \Config\Database::connect();
+        $announcement = $db->table('announcements')->where('id', $id)->get()->getRowArray();
+        if (! $announcement) {
+            if ($this->request->isAJAX()) {
+                return $this->response->setStatusCode(404)->setJSON([
+                    'success' => false,
+                    'message' => 'Announcement not found.',
+                ]);
+            }
+
+            return redirect()->back()->with('error', 'Announcement not found.');
         }
 
+        $deleted = $db->table('announcements')->where('id', $id)->delete();
+        if ($deleted === false || $db->affectedRows() !== 1) {
+            $databaseError = $db->error();
+            log_message(
+                'error',
+                'Failed to delete announcement {announcementId}. Database error {errorCode}: {errorMessage}',
+                [
+                    'announcementId' => $id,
+                    'errorCode' => $databaseError['code'] ?? 0,
+                    'errorMessage' => $databaseError['message'] ?? 'No database error details available.',
+                ]
+            );
+            if ($this->request->isAJAX()) {
+                return $this->response->setStatusCode(500)->setJSON([
+                    'success' => false,
+                    'message' => 'The announcement could not be deleted from the database. Please try again; if it continues, contact the system administrator.',
+                ]);
+            }
+
+            return redirect()->back()->with('error', 'The announcement could not be deleted from the database. Please try again.');
+        }
+
+        $this->deleteAnnouncementImage($announcement['image_path'] ?? null);
         (new AuditLogModel())->record('DELETE', 'Deleted announcement ' . $id . '.');
+        if ($this->request->isAJAX()) {
+            return $this->response->setJSON(['success' => true, 'message' => 'Announcement deleted successfully.']);
+        }
+
         return redirect()->to('/admin/announcements')->with('success', 'Announcement deleted successfully.');
     }
 

@@ -355,9 +355,9 @@
                                             <td>
                                                 <div class="announcement-actions">
                                                     <a class="btn btn-outline" href="<?= base_url('admin/announcements/edit/' . $item['id']) ?>">Edit</a>
-                                                    <form method="post" action="<?= base_url('admin/announcements/delete/' . $item['id']) ?>">
+                                                    <form class="announcement-delete-form" method="post" action="<?= base_url('admin/announcements/delete/' . $item['id']) ?>">
                                                         <?= csrf_field() ?>
-                                                        <button type="submit" class="btn btn-danger" onclick="return confirm('Delete this announcement?')">Delete</button>
+                                                        <button type="submit" class="btn btn-danger">Delete</button>
                                                     </form>
                                                 </div>
                                             </td>
@@ -401,6 +401,36 @@
         </script>
     <?php endif; ?>
     <script>
+        document.querySelectorAll('.announcement-delete-form').forEach((form) => {
+            form.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                if (!window.confirm('Delete this announcement?')) {
+                    return;
+                }
+
+                const button = form.querySelector('button[type="submit"]');
+                button.disabled = true;
+                try {
+                    const response = await fetch(form.action, {
+                        method: 'POST',
+                        body: new FormData(form),
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    });
+                    const result = await response.json().catch(() => null);
+                    if (!response.ok || !result?.success) {
+                        window.alert(result?.message || `Unable to delete announcement (HTTP ${response.status}).`);
+                        button.disabled = false;
+                        return;
+                    }
+
+                    window.location.reload();
+                } catch (error) {
+                    window.alert('Unable to delete announcement. Check your connection and try again.');
+                    button.disabled = false;
+                }
+            });
+        });
+
         const announcementFormToggle = document.getElementById('toggleAnnouncementForm');
         const announcementFormOverlay = document.getElementById('announcementFormOverlay');
         const announcementFormPanel = document.getElementById('announcementFormPanel');

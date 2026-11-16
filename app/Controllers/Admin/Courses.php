@@ -49,6 +49,11 @@ class Courses extends BaseController
             ->join('departments', 'departments.id = courses.department_id', 'left')
             ->orderBy('courses.created_at', 'DESC');
 
+        $departmentId = $this->request->getGet('department_id');
+        if ($departmentId !== null && $departmentId !== '') {
+            $builder->where('courses.department_id', (int) $departmentId);
+        }
+
         $courses = $builder->findAll();
         return $this->response->setJSON($courses);
     }
@@ -105,21 +110,56 @@ class Courses extends BaseController
 
     public function delete($id)
     {
-        $studentModel = new \App\Models\StudentModel();
-        $usedByStudents = $studentModel->where('course_id', $id)->countAllResults();
-
-        if ($usedByStudents > 0) {
-            return $this->response->setJSON([
+        $course = $this->model->find($id);
+        if (! $course) {
+            return $this->response->setStatusCode(404)->setJSON([
                 'success' => false,
-                'message' => 'This course is currently being used by students. Consider deactivating it instead of deleting it.'
+                'message' => 'Course not found.',
             ]);
         }
 
-        $course = $this->model->find($id);
-        $this->model->delete($id);
-        if ($course) {
-            (new AuditLogModel())->record('DELETE', 'Deleted course ' . $course['course_name'] . '.');
+        $db = \Config\Database::connect();
+        $linkedStudents = $db->table('students')
+            ->where('course_id', $id)
+            ->countAllResults();
+
+        try {
+            $db->transBegin();
+            if ($linkedStudents > 0) {
+                $db->table('students')
+                    ->where('course_id', $id)
+                    ->update(['course_id' => null]);
+            }
+
+            $deleted = $db->table('courses')->where('id', $id)->delete();
+            if ($deleted === false || ! $db->transStatus() || $db->affectedRows() !== 1) {
+                $db->transRollback();
+                log_message('error', 'Failed to delete course {courseId}.', ['courseId' => $id]);
+                return $this->response->setStatusCode(500)->setJSON([
+                    'success' => false,
+                    'message' => 'The course could not be deleted. Please try again or check the application logs.',
+                ]);
+            }
+
+            $db->transCommit();
+        } catch (\CodeIgniter\Database\Exceptions\DatabaseException $exception) {
+            $db->transRollback();
+            log_message(
+                'error',
+                'Failed to delete course {courseId}: {error}',
+                ['courseId' => $id, 'error' => $exception->getMessage()]
+            );
+            return $this->response->setStatusCode(500)->setJSON([
+                'success' => false,
+                'message' => 'The course could not be deleted. Please try again or check the application logs.',
+            ]);
         }
+
+        $auditMessage = 'Deleted course ' . $course['course_name'] . '.';
+        if ($linkedStudents > 0) {
+            $auditMessage .= ' Cleared the course selection for ' . $linkedStudents . ' student account(s); saved course names were retained.';
+        }
+        (new AuditLogModel())->record('DELETE', $auditMessage);
         return $this->response->setJSON(['success' => true, 'message' => 'Course deleted.']);
     }
 

@@ -54,26 +54,23 @@
 
 <script>
 async function loadCoursePage() {
-    const deptRes = await fetch('<?= base_url('admin/departments/list') ?>');
+    const deptRes = await fetch('<?= base_url('admin/departments/all') ?>');
     const deps = await deptRes.json();
     const sel = document.getElementById('filterDeptSelect');
-    sel.innerHTML = '<option value="">All Departments</option>' + deps.map(d=>`<option value="${d.id}">${d.department_code} - ${d.department_name}</option>`).join('');
-
-    const res = await fetch('<?= base_url('admin/courses') ?>');
-    const list = await fetch('<?= base_url('admin/courses') ?>');
-    // Use courses API by department optionally; for now list all by calling index route JSON would not be returned, so fetch via courses listing endpoint not implemented; use simple page reload approach after actions
+    sel.innerHTML = '<option value="">All Departments</option>' + deps.map(d=>`<option value="${d.id}">${d.department_name}</option>`).join('');
     refreshCourses();
 }
 
 async function refreshCourses(departmentId) {
-    let url = '<?= base_url('admin/courses') ?>';
-    // no JSON endpoint for all courses; attempt using by-department when filter applied
-    if (departmentId) url = '<?= base_url('courses/by-department') ?>/' + departmentId;
-    const res = await fetch(url.replace(/\/$/, ''));
-    const data = await res.json().catch(()=>[]);
+    let url = '<?= base_url('admin/courses/all') ?>';
+    if (departmentId) url += '?department_id=' + encodeURIComponent(departmentId);
+    const res = await fetch(url);
+    const data = await res.json();
     const tbody = document.getElementById('coursesBody');
     if (!Array.isArray(data) || data.length === 0) { tbody.innerHTML = '<tr><td colspan="5">No courses</td></tr>'; return; }
-    tbody.innerHTML = data.map(c=>`<tr><td>${c.course_name}</td><td>${c.department_name || c.department_id}</td><td>${c.status}</td><td>${c.created_at ? new Date(String(c.created_at).replace(' ', 'T')).toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : ''}</td><td><button data-id="${c.id}" data-action="edit" class="btn btn-secondary">Edit</button> <button data-id="${c.id}" data-action="delete" class="btn btn-danger">Delete</button></td></tr>`).join('');
+    const search = document.getElementById('searchCourse').value.trim().toLowerCase();
+    const filtered = data.filter(c => `${c.course_name} ${c.department_name || ''}`.toLowerCase().includes(search));
+    tbody.innerHTML = filtered.length ? filtered.map(c=>`<tr><td>${c.course_name}</td><td>${c.department_name || c.department_id}</td><td>${c.status}</td><td>${c.created_at ? new Date(String(c.created_at).replace(' ', 'T')).toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : ''}</td><td><button data-id="${c.id}" data-action="edit" class="btn btn-secondary">Edit</button> <button data-id="${c.id}" data-action="delete" class="btn btn-danger">Delete</button></td></tr>`).join('') : '<tr><td colspan="5">No courses found.</td></tr>';
 }
 
 document.addEventListener('DOMContentLoaded', function(){
@@ -83,6 +80,8 @@ document.addEventListener('DOMContentLoaded', function(){
     const cancel = document.getElementById('courseCancel');
     const save = document.getElementById('courseSave');
     let editing = null;
+    document.getElementById('filterDeptSelect').addEventListener('change', function(){ refreshCourses(this.value); });
+    document.getElementById('searchCourse').addEventListener('input', function(){ refreshCourses(document.getElementById('filterDeptSelect').value); });
 
     addBtn.addEventListener('click', async function(){
         const deps = await (await fetch('<?= base_url('admin/departments/list') ?>')).json();
@@ -102,7 +101,13 @@ document.addEventListener('DOMContentLoaded', function(){
         if (action==='edit') {
             const res = await fetch('<?= base_url('admin/courses') ?>/'+id); const c = await res.json(); editing = id; document.getElementById('course_name').value=c.course_name; const deps = await (await fetch('<?= base_url('admin/departments/list') ?>')).json(); document.getElementById('course_department').innerHTML = deps.map(d=>`<option value="${d.id}" ${d.id==c.department_id? 'selected':''}>${d.department_code} - ${d.department_name}</option>`).join(''); document.getElementById('course_status').value=c.status; modal.style.display='block';
         }
-        if (action==='delete') { if (!confirm('Delete course?')) return; const res = await fetch('<?= base_url('admin/courses/delete') ?>/'+id, { method:'POST', headers: {'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content} }); const data = await res.json(); if (!data.success) alert('Failed to delete'); else loadCoursePage(); }
+        if (action==='delete') {
+            if (!confirm("Delete this course? Students' saved course names remain, but their linked course selection will be cleared.")) return;
+            const res = await fetch('<?= base_url('admin/courses/delete') ?>/'+id, { method:'POST', headers: {'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content, 'X-Requested-With': 'XMLHttpRequest'} });
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data?.success) alert(data?.message || `Unable to delete course (HTTP ${res.status}).`);
+            else loadCoursePage();
+        }
     });
 });
 </script>

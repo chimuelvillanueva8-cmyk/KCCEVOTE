@@ -117,18 +117,6 @@
     </div>
 </div>
 
-<div id="managementNotice" class="management-notice" hidden>
-    <section class="management-notice-dialog" role="alertdialog" aria-modal="true" aria-labelledby="managementNoticeTitle" aria-describedby="managementNoticeMessage">
-        <div class="management-notice-icon" aria-hidden="true"><i class="bi bi-info-circle-fill"></i></div>
-        <h2 id="managementNoticeTitle">Unable to complete action</h2>
-        <p id="managementNoticeMessage"></p>
-        <div class="management-notice-actions">
-            <button type="button" id="managementNoticeCancel" class="btn btn-secondary" hidden>Cancel</button>
-            <button type="button" id="managementNoticeClose" class="btn btn-primary">Got it</button>
-        </div>
-    </section>
-</div>
-
 <script>
 const deptApi = '<?= base_url('admin/departments/all') ?>';
 const deptListApi = '<?= base_url('admin/departments/list') ?>';
@@ -136,113 +124,31 @@ const courseApi = '<?= base_url('admin/courses/all') ?>';
 let departmentList = [];
 let courseList = [];
 
-function showManagementNotice(message, title = 'Unable to complete action') {
-    const notice = document.getElementById('managementNotice');
-    const noticeTitle = document.getElementById('managementNoticeTitle');
-    const noticeMessage = document.getElementById('managementNoticeMessage');
-    const cancelButton = document.getElementById('managementNoticeCancel');
-    const closeButton = document.getElementById('managementNoticeClose');
-    if (!notice || !noticeTitle || !noticeMessage || !cancelButton || !closeButton) return;
-
-    noticeTitle.textContent = title;
-    noticeMessage.textContent = message;
-    cancelButton.hidden = true;
-    closeButton.textContent = 'Got it';
-    closeButton.classList.remove('is-danger');
-    notice.hidden = false;
-    const previousFocus = document.activeElement;
-    closeButton.focus();
-
-    const close = () => {
-        notice.hidden = true;
-        closeButton.removeEventListener('click', close);
-        cancelButton.removeEventListener('click', close);
-        notice.removeEventListener('click', onBackdropClick);
-        document.removeEventListener('keydown', onKeyDown);
-        if (previousFocus instanceof HTMLElement) previousFocus.focus();
-    };
-    const onBackdropClick = event => {
-        if (event.target === notice) close();
-    };
-    const onKeyDown = event => {
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            close();
-        } else if (event.key === 'Tab') {
-            event.preventDefault();
-            closeButton.focus();
-        }
-    };
-
-    closeButton.addEventListener('click', close);
-    cancelButton.addEventListener('click', close);
-    notice.addEventListener('click', onBackdropClick);
-    document.addEventListener('keydown', onKeyDown);
-}
-
-function confirmManagementAction(title, message, confirmLabel = 'Delete') {
-    const notice = document.getElementById('managementNotice');
-    const noticeTitle = document.getElementById('managementNoticeTitle');
-    const noticeMessage = document.getElementById('managementNoticeMessage');
-    const cancelButton = document.getElementById('managementNoticeCancel');
-    const confirmButton = document.getElementById('managementNoticeClose');
-    const icon = document.querySelector('.management-notice-icon');
-    if (!notice || !noticeTitle || !noticeMessage || !cancelButton || !confirmButton || !icon) {
-        return Promise.resolve(false);
-    }
-
-    noticeTitle.textContent = title;
-    noticeMessage.textContent = message;
-    cancelButton.hidden = false;
-    confirmButton.textContent = confirmLabel;
-    confirmButton.classList.add('is-danger');
-    icon.classList.add('is-danger');
-    notice.hidden = false;
-    const previousFocus = document.activeElement;
-    cancelButton.focus();
-
-    return new Promise(resolve => {
-        let resolved = false;
-        const finish = confirmed => {
-            if (resolved) return;
-            resolved = true;
-            notice.hidden = true;
-            cancelButton.removeEventListener('click', onCancel);
-            confirmButton.removeEventListener('click', onConfirm);
-            notice.removeEventListener('click', onBackdropClick);
-            document.removeEventListener('keydown', onKeyDown);
-            cancelButton.hidden = true;
-            confirmButton.textContent = 'Got it';
-            confirmButton.classList.remove('is-danger');
-            icon.classList.remove('is-danger');
-            if (previousFocus instanceof HTMLElement) previousFocus.focus();
-            resolve(confirmed);
-        };
-        const onCancel = () => finish(false);
-        const onConfirm = () => finish(true);
-        const onBackdropClick = event => {
-            if (event.target === notice) finish(false);
-        };
-        const onKeyDown = event => {
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                finish(false);
-            } else if (event.key === 'Tab') {
-                event.preventDefault();
-                (document.activeElement === cancelButton ? confirmButton : cancelButton).focus();
-            }
-        };
-
-        cancelButton.addEventListener('click', onCancel);
-        confirmButton.addEventListener('click', onConfirm);
-        notice.addEventListener('click', onBackdropClick);
-        document.addEventListener('keydown', onKeyDown);
-    });
-}
-
 async function fetchJson(url) {
     const res = await fetch(url);
     return res.ok ? res.json() : [];
+}
+
+async function postDelete(url) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+    if (!csrfToken) {
+        throw new Error('Security token is missing. Refresh the page and try again.');
+    }
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    });
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result) {
+        throw new Error(result?.message || `Delete request failed (HTTP ${response.status}). Refresh the page and try again.`);
+    }
+
+    return result;
 }
 
 function departmentStatusChip(status) {
@@ -464,23 +370,20 @@ async function deleteDepartment(departmentId) {
     if (!department) return;
     if (Number(department.course_count || 0) > 0) {
         const courseCount = Number(department.course_count);
-        showManagementNotice(
-            `This department has ${courseCount} ${courseCount === 1 ? 'course' : 'courses'} assigned. Reassign or delete ${courseCount === 1 ? 'it' : 'them'} before deleting the department.`,
-            "Department can't be deleted yet"
-        );
+        window.alert(`This department has ${courseCount} ${courseCount === 1 ? 'course' : 'courses'} assigned. Delete or reassign ${courseCount === 1 ? 'it' : 'them'} first.`);
         return;
     }
 
-    if (!await confirmManagementAction(
-        'Delete this department?',
-        `Delete "${department.department_name}"? This action cannot be undone.`
-    )) return;
+    if (!window.confirm(`Delete department "${department.department_name}"? This action cannot be undone.`)) return;
 
-    const response = await fetch(`<?= base_url('admin/departments/delete') ?>/${departmentId}`, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-    const result = await response.json();
-
-    if (!result.success) {
-        showManagementNotice(result.message || 'Unable to delete department.', 'Department not deleted');
+    try {
+        const result = await postDelete(`<?= base_url('admin/departments/delete') ?>/${departmentId}`);
+        if (!result.success) {
+            window.alert(result.message || 'Unable to delete department.');
+            return;
+        }
+    } catch (error) {
+        window.alert(error.message);
         return;
     }
 
@@ -491,16 +394,16 @@ async function deleteDepartment(departmentId) {
 async function deleteCourse(courseId) {
     const course = courseList.find(item => String(item.id) === String(courseId));
     const courseName = course?.course_name || 'this course';
-    if (!await confirmManagementAction(
-        'Delete this course?',
-        `Delete "${courseName}"? This action cannot be undone.`
-    )) return;
+    if (!window.confirm(`Delete course "${courseName}"? Students' saved course names remain; their linked course selection will be cleared.`)) return;
 
-    const response = await fetch(`<?= base_url('admin/courses/delete') ?>/${courseId}`, { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
-    const result = await response.json();
-
-    if (!result.success) {
-        showManagementNotice(result.message || 'Unable to delete course.', 'Course not deleted');
+    try {
+        const result = await postDelete(`<?= base_url('admin/courses/delete') ?>/${courseId}`);
+        if (!result.success) {
+            window.alert(result.message || 'Unable to delete course.');
+            return;
+        }
+    } catch (error) {
+        window.alert(error.message);
         return;
     }
 
@@ -700,89 +603,6 @@ document.addEventListener('DOMContentLoaded', async function () {
         border-radius: 7px;
         font-size: 0.82rem;
         white-space: nowrap;
-    }
-
-    .management-notice {
-        position: fixed;
-        inset: 0;
-        z-index: 13000;
-        display: grid;
-        place-items: center;
-        padding: 1rem;
-        background: rgba(3, 9, 30, 0.72);
-        backdrop-filter: blur(5px);
-        -webkit-backdrop-filter: blur(5px);
-    }
-
-    .management-notice[hidden] {
-        display: none !important;
-    }
-
-    .management-notice-dialog {
-        width: min(100%, 440px);
-        padding: clamp(1.25rem, 4vw, 1.75rem);
-        border: 1px solid rgba(15, 23, 42, 0.1);
-        border-radius: 18px;
-        background: #FFFFFF;
-        color: #111827;
-        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.3);
-    }
-
-    body.dashboard-page .department-management .management-notice-icon,
-    body.dashboard-page .department-management .management-notice-icon i {
-        display: grid;
-        width: 46px;
-        height: 46px;
-        place-items: center;
-        margin-bottom: 1rem;
-        border-radius: 14px;
-        background: #FEF3C7;
-        color: #B45309 !important;
-        font-size: 1.25rem;
-    }
-
-    body.dashboard-page .department-management .management-notice-icon.is-danger {
-        background: #FEE2E2;
-        color: #B91C1C !important;
-    }
-
-    body.dashboard-page .department-management .management-notice-dialog h2 {
-        margin: 0 0 0.5rem;
-        color: #111827 !important;
-        font-size: 1.2rem;
-        line-height: 1.35;
-    }
-
-    body.dashboard-page .department-management .management-notice-dialog p {
-        margin: 0;
-        color: #4B5563 !important;
-        line-height: 1.6;
-    }
-
-    .management-notice-actions {
-        display: flex;
-        justify-content: center;
-        margin-top: 1.25rem;
-    }
-
-    .management-notice-actions .btn {
-        min-width: 96px;
-        color: #111827 !important;
-    }
-
-    .management-notice-actions #managementNoticeCancel[hidden] {
-        display: none !important;
-    }
-
-    body.dashboard-page .department-management .management-notice-actions #managementNoticeClose.is-danger {
-        background: #DC2626 !important;
-        border-color: #B91C1C !important;
-        color: #FFFFFF !important;
-    }
-
-    body.dashboard-page .department-management .management-notice-actions #managementNoticeClose.is-danger:hover {
-        background: #B91C1C !important;
-        color: #FFFFFF !important;
     }
 
     body.dashboard-page .department-management .management-actions .btn,

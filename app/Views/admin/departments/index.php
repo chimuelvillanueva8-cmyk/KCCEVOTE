@@ -50,15 +50,13 @@
 
 <script>
 async function refreshDepartments() {
-    const res = await fetch('<?= base_url('admin/departments') ?>');
-    // The index route returns an HTML page when browsed; use list endpoint for JSON
-    const listRes = await fetch('<?= base_url('admin/departments/list') ?>');
+    const listRes = await fetch('<?= base_url('admin/departments/all') ?>');
     const deps = await listRes.json();
     const tbody = document.getElementById('departmentsBody');
     tbody.innerHTML = deps.map(d => `
         <tr>
             <td>${d.department_name}</td>
-            <td>—</td>
+            <td>${d.course_count || 0}</td>
             <td>${d.status}</td>
             <td>${d.created_at ? new Date(String(d.created_at).replace(' ', 'T')).toLocaleString(undefined, { year: 'numeric', month: 'short', day: '2-digit', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true }) : ''}</td>
             <td><button class="btn btn-secondary" data-id="${d.id}" data-action="edit">Edit</button> <button class="btn btn-danger" data-id="${d.id}" data-action="delete">Delete</button></td>

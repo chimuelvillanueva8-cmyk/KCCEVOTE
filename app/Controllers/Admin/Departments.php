@@ -109,18 +109,29 @@ class Departments extends BaseController
 
     public function delete($id)
     {
-        // prevent delete if courses exist
+        $department = $this->model->find($id);
+        if (! $department) {
+            return $this->response->setStatusCode(404)->setJSON([
+                'success' => false,
+                'message' => 'Department not found.',
+            ]);
+        }
+
         $courseModel = new CourseModel();
         $count = $courseModel->where('department_id', $id)->countAllResults();
         if ($count > 0) {
             return $this->response->setJSON(['success' => false, 'message' => 'This department has courses assigned to it. Please remove or deactivate the courses first.']);
         }
 
-        $department = $this->model->find($id);
-        $this->model->delete($id);
-        if ($department) {
-            (new AuditLogModel())->record('DELETE', 'Deleted department ' . $department['department_name'] . '.');
+        if (! $this->model->delete($id)) {
+            log_message('error', 'Failed to delete department {departmentId}.', ['departmentId' => $id]);
+            return $this->response->setStatusCode(500)->setJSON([
+                'success' => false,
+                'message' => 'The department could not be deleted. Please try again or check the application logs.',
+            ]);
         }
+
+        (new AuditLogModel())->record('DELETE', 'Deleted department ' . $department['department_name'] . '.');
         return $this->response->setJSON(['success' => true, 'message' => 'Department deleted.']);
     }
 

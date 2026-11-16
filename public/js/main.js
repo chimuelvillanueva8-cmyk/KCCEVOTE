@@ -317,6 +317,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     if (document.getElementById('student-count')) {
+        updateDashboardElectionStats(window.dashboardInitialElections, window.dashboardInitialElectionId);
         fetchDashboardStats();
         setInterval(fetchDashboardStats, 30000);
         setInterval(advanceDashboardElection, 5000);

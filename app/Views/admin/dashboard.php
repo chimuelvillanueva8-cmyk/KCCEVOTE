@@ -12,7 +12,11 @@
     <link rel="stylesheet" href="<?= base_url('css/burger-menu.css') ?>">
     <link rel="stylesheet" href="<?= base_url('css/style.css') ?>">
     <link rel="stylesheet" href="<?= base_url('css/dashboard.css') ?>">
-    <script>window.dashboardStatsUrl = <?= json_encode(base_url('api/stats')) ?>;</script>
+    <script>
+        window.dashboardStatsUrl = <?= json_encode(base_url('api/stats'), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+        window.dashboardInitialElections = <?= json_encode($elections_overview, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) ?>;
+        window.dashboardInitialElectionId = <?= json_encode($election_id) ?>;
+    </script>
     <script src="<?= base_url('js/burger-menu.js') ?>" defer></script>
     <script src="<?= base_url('js/main.js') ?>" defer></script>
 </head>

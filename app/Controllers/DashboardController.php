@@ -78,6 +78,7 @@ class DashboardController extends BaseController
             'candidate_count' => $candidateCount,
             'election_status' => $electionStatus,
             'election_title' => $electionTitle,
+            'election_id' => $election ? (int) $election['id'] : null,
             'voter_count' => $voterCount,
             'eligible_voter_count' => $eligibleVoterCount,
             'vote_progress' => $progress,

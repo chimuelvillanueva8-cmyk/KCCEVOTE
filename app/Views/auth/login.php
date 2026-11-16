@@ -572,7 +572,7 @@
                             <div id="locationStatus" class="mt-2 small text-muted">Checking campus location...</div>
 
                             <div style="display:flex;gap:10px;margin-top:14px;">
-                                <button type="submit" class="kevs-btn" style="flex:1;">Student Login</button>
+                                <button type="submit" class="kevs-btn" style="flex:1;">Login Using Password</button>
                             </div>
                         </form>
 

@@ -25,9 +25,6 @@ class App extends BaseConfig
             || (bool) env('app.forceGlobalSecureRequests', false);
 
         $configuredBaseURL = trim((string) env('app.baseURL', getenv('RENDER_EXTERNAL_URL') ?: ''), " \t\n\r\0\x0B'\"");
-        if ($configuredBaseURL === '' && ! empty($_SERVER['HTTP_HOST'])) {
-            $configuredBaseURL = 'https://' . $_SERVER['HTTP_HOST'] . '/';
-        }
         if ($configuredBaseURL !== '') {
             $parsedBaseURL = parse_url($configuredBaseURL);
             if (

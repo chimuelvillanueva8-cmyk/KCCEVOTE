@@ -1841,6 +1841,13 @@ body.dashboard-page.dashboard-home .stats-overview .stat-content p {
     font-size: 0.95rem;
 }
 
+body.dashboard-page.dashboard-home .stats-overview .stat-content p.stat-context {
+    font-size: 0.75rem;
+    line-height: 1.35;
+    opacity: 0.8;
+    overflow-wrap: anywhere;
+}
+
 .dashboard-vote-progress {
     position: relative;
     height: 18px;

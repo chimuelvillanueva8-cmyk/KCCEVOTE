@@ -70,7 +70,9 @@ function updateDashboard(data) {
     const studentCount = document.getElementById('student-count');
     const voteCount = document.getElementById('vote-count');
     const candidateCount = document.getElementById('candidate-count');
+    const candidateElectionTitle = document.getElementById('candidate-election-title');
     const electionStatus = document.getElementById('election-status');
+    const electionStatusTitle = document.getElementById('election-status-title');
     const progressBar = document.getElementById('vote-progress-bar');
     const progressLabel = document.getElementById('vote-progress-label');
     const progressTrack = progressBar ? progressBar.parentElement : null;
@@ -80,7 +82,10 @@ function updateDashboard(data) {
     if (studentCount) studentCount.textContent = data.students;
     if (voteCount) voteCount.textContent = data.votes;
     if (candidateCount) candidateCount.textContent = data.candidates;
+    const electionTitle = data.election_title ? `Election: ${data.election_title}` : 'No election available';
+    if (candidateElectionTitle) candidateElectionTitle.textContent = electionTitle;
     if (electionStatus) electionStatus.textContent = data.election_status;
+    if (electionStatusTitle) electionStatusTitle.textContent = electionTitle;
     if (progressBar) {
         const width = Number.isFinite(Number(data.vote_progress)) ? Math.max(0, Math.min(100, Number(data.vote_progress))) : 0;
         progressBar.style.width = `${width}%`;

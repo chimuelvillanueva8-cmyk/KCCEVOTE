@@ -51,6 +51,7 @@
                     <div class="stat-content">
                         <h3 id="candidate-count"><?= esc($candidate_count) ?></h3>
                         <p>Candidates</p>
+                        <p class="stat-context" id="candidate-election-title"><?= ! empty($election_title) ? 'Election: ' . esc($election_title) : 'No election available' ?></p>
                     </div>
                 </div>
                 <div class="stat-card warning">
@@ -58,6 +59,7 @@
                     <div class="stat-content">
                         <h3 id="election-status"><?= esc($election_status ?? 'NONE') ?></h3>
                         <p>Election Status</p>
+                        <p class="stat-context" id="election-status-title"><?= ! empty($election_title) ? 'Election: ' . esc($election_title) : 'No election available' ?></p>
                     </div>
                 </div>
             </div>

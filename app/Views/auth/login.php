@@ -570,7 +570,7 @@
 
                             <input type="hidden" name="latitude" id="latitude">
                             <input type="hidden" name="longitude" id="longitude">
-                            <div id="locationStatus" class="mt-2 small text-muted">Campus location is checked when you log in.</div>
+                            <div id="locationStatus" class="mt-2 small text-success">Campus location is checked when you log in.</div>
 
                             <div style="display:flex;gap:10px;margin-top:14px;">
                                 <button type="submit" class="kevs-btn" style="flex:1;">Login Using Password</button>

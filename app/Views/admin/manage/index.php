@@ -243,7 +243,15 @@ async function submitFormWithJson(form, apiUrl) {
         body: formData,
         headers: { 'X-Requested-With': 'XMLHttpRequest' }
     });
-    return response.ok ? response.json() : { success: false, message: 'Request failed.' };
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result) {
+        return {
+            success: false,
+            message: result?.message || `Request failed (HTTP ${response.status}).`
+        };
+    }
+
+    return result;
 }
 
 async function handleDepartmentSubmit(event) {

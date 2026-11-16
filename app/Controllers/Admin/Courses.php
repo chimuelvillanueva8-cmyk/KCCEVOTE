@@ -70,13 +70,26 @@ class Courses extends BaseController
             return $this->response->setJSON(['success' => false, 'errors' => $this->validator->getErrors()]);
         }
 
-        $this->model->insert([
-            'department_id' => $data['department_id'],
-            'course_name' => trim($data['course_name']),
-            'status' => $data['status'] ?? 'Active',
-        ]);
+        $courseName = trim($data['course_name']);
+        $courseCode = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $courseName));
+        if ($courseCode === '') {
+            $courseCode = 'COURSE';
+        }
 
-        (new AuditLogModel())->record('CREATE', 'Created course ' . trim($data['course_name']) . '.');
+        if (! $this->model->insert([
+            'department_id' => $data['department_id'],
+            'course_code' => substr($courseCode, 0, 32),
+            'course_name' => $courseName,
+            'status' => $data['status'] ?? 'Active',
+        ], false)) {
+            log_message('error', 'Failed to add course. Database error: ' . json_encode($this->model->db->error()));
+            return $this->response->setStatusCode(500)->setJSON([
+                'success' => false,
+                'message' => 'Unable to add the course. Please try again or check the application logs.',
+            ]);
+        }
+
+        (new AuditLogModel())->record('CREATE', 'Created course ' . $courseName . '.');
         return $this->response->setJSON(['success' => true, 'message' => 'Course added successfully.']);
     }
 
@@ -98,11 +111,20 @@ class Courses extends BaseController
             return $this->response->setJSON(['success' => false, 'errors' => $this->validator->getErrors()]);
         }
 
-        $this->model->update($id, [
+        if (! $this->model->update($id, [
             'department_id' => $data['department_id'],
             'course_name' => trim($data['course_name']),
             'status' => $data['status'] ?? 'Active',
-        ]);
+        ])) {
+            log_message('error', 'Failed to update course {courseId}. Database error: {error}', [
+                'courseId' => $id,
+                'error' => json_encode($this->model->db->error()),
+            ]);
+            return $this->response->setStatusCode(500)->setJSON([
+                'success' => false,
+                'message' => 'Unable to update the course. Please try again or check the application logs.',
+            ]);
+        }
 
         (new AuditLogModel())->record('UPDATE', 'Updated course ' . trim($data['course_name']) . '.');
         return $this->response->setJSON(['success' => true, 'message' => 'Course updated successfully.']);

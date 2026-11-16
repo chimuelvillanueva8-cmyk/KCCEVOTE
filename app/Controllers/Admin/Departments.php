@@ -72,12 +72,25 @@ class Departments extends BaseController
             return $this->response->setJSON(['success' => false, 'errors' => $this->validator->getErrors()]);
         }
 
-        $this->model->insert([
-            'department_name' => trim($data['department_name']),
-            'status' => $data['status'] ?? 'Active',
-        ]);
+        $departmentName = trim($data['department_name']);
+        $departmentCode = strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $departmentName));
+        if ($departmentCode === '') {
+            $departmentCode = 'DEPT';
+        }
 
-        (new AuditLogModel())->record('CREATE', 'Created department ' . trim($data['department_name']) . '.');
+        if (! $this->model->insert([
+            'department_code' => substr($departmentCode, 0, 32),
+            'department_name' => $departmentName,
+            'status' => $data['status'] ?? 'Active',
+        ], false)) {
+            log_message('error', 'Failed to add department. Database error: ' . json_encode($this->model->db->error()));
+            return $this->response->setStatusCode(500)->setJSON([
+                'success' => false,
+                'message' => 'Unable to add the department. Please try again or check the application logs.',
+            ]);
+        }
+
+        (new AuditLogModel())->record('CREATE', 'Created department ' . $departmentName . '.');
         return $this->response->setJSON(['success' => true, 'message' => 'Department added successfully.']);
     }
 
@@ -98,10 +111,19 @@ class Departments extends BaseController
             return $this->response->setJSON(['success' => false, 'errors' => $this->validator->getErrors()]);
         }
 
-        $this->model->update($id, [
+        if (! $this->model->update($id, [
             'department_name' => trim($data['department_name']),
             'status' => $data['status'] ?? 'Active',
-        ]);
+        ])) {
+            log_message('error', 'Failed to update department {departmentId}. Database error: {error}', [
+                'departmentId' => $id,
+                'error' => json_encode($this->model->db->error()),
+            ]);
+            return $this->response->setStatusCode(500)->setJSON([
+                'success' => false,
+                'message' => 'Unable to update the department. Please try again or check the application logs.',
+            ]);
+        }
 
         (new AuditLogModel())->record('UPDATE', 'Updated department ' . trim($data['department_name']) . '.');
         return $this->response->setJSON(['success' => true, 'message' => 'Department updated successfully.']);

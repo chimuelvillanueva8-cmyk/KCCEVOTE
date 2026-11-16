@@ -1069,7 +1069,7 @@ body.dashboard-page .status-pill.status-pending {
 
 body.dashboard-page .status-pill.status-closed {
     background: rgba(252, 211, 77, 0.24);
-    color: #FFFFFF;
+    color: #FFFFFF !important;
 }
 
 body.dashboard-page .line-path {

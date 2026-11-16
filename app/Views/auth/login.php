@@ -583,7 +583,7 @@
                             <?= csrf_field() ?>
                             <input type="hidden" name="student_id" id="faceStudentId" />
                             <div style="display:flex;gap:10px;align-items:center;">
-                                <button type="button" id="scanFaceBtn" class="kevs-scan" style="flex:1;"><i class="bi bi-camera-video-fill" style="margin-right:8px"></i> Scan Face</button>
+                                <button type="button" id="scanFaceBtn" class="kevs-scan" style="flex:1;"><i class="bi bi-camera-video-fill" style="margin-right:8px"></i> Face Login</button>
                             </div>
                         </form>
 

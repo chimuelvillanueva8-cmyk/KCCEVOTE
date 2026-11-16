@@ -2339,10 +2339,14 @@ if (importFileInput) {
             });
             const data = await res.json();
             if (!res.ok || !data.success) {
-                throw new Error(data.message || `Import failed (${res.status}).`);
+                const details = Array.isArray(data.errors) ? data.errors.slice(0, 5).join(' ') : '';
+                throw new Error(data.message || details || `Import failed (${res.status}).`);
             }
             showToast(`Imported ${data.imported} students${data.updated ? `, updated ${data.updated}` : ''}.`);
-            fetchList({page:1});
+            if (Array.isArray(data.errors) && data.errors.length) {
+                showStudentNotice(data.errors.slice(0, 5).join('\n'), 'Import completed with warnings');
+            }
+            await fetchList({page:1});
         } catch (error) {
             console.error('Failed to import students', error);
             showStudentNotice(error.message || 'The student file could not be imported. Please try again.', 'Import failed');

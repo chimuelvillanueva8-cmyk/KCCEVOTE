@@ -92,15 +92,19 @@ class Student extends BaseController
         $deptModel = new \App\Models\DepartmentModel();
         $courseModel = new \App\Models\CourseModel();
         foreach ($students as &$student) {
-            if (empty($student['department']) && !empty($student['department_id'])) {
+            if (!empty($student['department_id'])) {
                 $dept = $deptModel->find($student['department_id']);
-                $student['department'] = $dept['department_name'] ?? $dept['department_code'] ?? '';
-                $student['department_name'] = $student['department'];
+                if ($dept) {
+                    $student['department'] = $dept['department_name'] ?? $dept['department_code'] ?? $student['department'] ?? '';
+                    $student['department_name'] = $student['department'];
+                }
             }
-            if (empty($student['course']) && !empty($student['course_id'])) {
+            if (!empty($student['course_id'])) {
                 $course = $courseModel->find($student['course_id']);
-                $student['course'] = $course['course_name'] ?? $course['course_code'] ?? '';
-                $student['course_name'] = $student['course'];
+                if ($course) {
+                    $student['course'] = $course['course_name'] ?? $course['course_code'] ?? $student['course'] ?? '';
+                    $student['course_name'] = $student['course'];
+                }
             }
             unset($student['password'], $student['face_descriptor'], $student['id_photo_hash'], $student['failed_login_attempts'], $student['locked_until']);
         }
@@ -428,6 +432,21 @@ class Student extends BaseController
         return $this->response->setJSON(['success' => false]);
     }
 
+    protected function appendImportRow(array &$rows, array $headers, array $values): void
+    {
+        if ($headers === []) {
+            return;
+        }
+
+        $columnCount = count($headers);
+        $values = array_slice(array_pad($values, $columnCount, ''), 0, $columnCount);
+        if (count(array_filter($values, static fn ($value) => trim((string) $value) !== '')) === 0) {
+            return;
+        }
+
+        $rows[] = array_combine($headers, $values);
+    }
+
     public function import()
     {
         $file = $this->request->getFile('student_file');
@@ -449,12 +468,12 @@ class Student extends BaseController
                 fclose($handle);
                 return $this->response->setJSON(['success' => false, 'message' => 'Uploaded file is empty or invalid.']);
             }
-            $headers[0] = preg_replace('/^\xEF\xBB\xBF/', '', $headers[0]);
+            $headers = array_map(static fn ($header) => trim((string) $header), $headers);
+            if (isset($headers[0])) {
+                $headers[0] = preg_replace('/^\xEF\xBB\xBF/', '', $headers[0]);
+            }
             while (($line = fgetcsv($handle)) !== false) {
-                if (count(array_filter($line, fn($value) => trim((string) $value) !== '')) === 0) {
-                    continue;
-                }
-                $rows[] = array_combine($headers, $line);
+                $this->appendImportRow($rows, $headers, $line);
             }
             fclose($handle);
         } elseif (in_array($ext, ['xlsx', 'xls'])) {
@@ -470,19 +489,13 @@ class Student extends BaseController
             $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($path);
             $spreadsheet = $reader->load($path);
             $sheet = $spreadsheet->getActiveSheet();
-            $headerRow = [];
-            foreach ($sheet->getRowIterator(1, 1)->current()->getCellIterator() as $cell) {
-                $headerRow[] = trim((string) $cell->getValue());
-            }
-            foreach ($sheet->getRowIterator(2) as $row) {
-                $rowValues = [];
-                foreach ($row->getCellIterator() as $cell) {
-                    $rowValues[] = trim((string) $cell->getValue());
-                }
-                if (count(array_filter($rowValues, fn($value) => $value !== '')) === 0) {
-                    continue;
-                }
-                $rows[] = array_combine($headerRow, $rowValues);
+            $sheetRows = $sheet->toArray(null, true, true, false);
+            $headerRow = array_map(
+                static fn ($header) => trim((string) $header),
+                array_shift($sheetRows) ?? []
+            );
+            foreach ($sheetRows as $rowValues) {
+                $this->appendImportRow($rows, $headerRow, $rowValues);
             }
         } else {
             return $this->response->setJSON(['success' => false, 'message' => 'Unsupported file type. Use CSV.']);
@@ -490,19 +503,30 @@ class Student extends BaseController
 
         $fieldMap = [
             'student id' => 'student_id',
-            'student_id' => 'student_id',
+            'student id number' => 'student_id',
+            'student number' => 'student_id',
+            'studentid' => 'student_id',
             'id' => 'student_id',
             'first name' => 'first_name',
             'firstname' => 'first_name',
             'middle name' => 'middle_name',
             'middlename' => 'middle_name',
+            'middle initial' => 'middle_name',
             'last name' => 'last_name',
             'lastname' => 'last_name',
             'full name' => 'full_name',
             'fullname' => 'full_name',
+            'student name' => 'full_name',
+            'name' => 'full_name',
             'email' => 'email',
             'department' => 'department',
+            'department name' => 'department',
+            'department id' => 'department_id',
             'course' => 'course',
+            'course name' => 'course',
+            'course id' => 'course_id',
+            'school year' => 'school_year',
+            'academic year' => 'school_year',
             'year level' => 'year_level',
             'yearlevel' => 'year_level',
             'year' => 'year_level',
@@ -513,21 +537,75 @@ class Student extends BaseController
         $imported = 0;
         $updated = 0;
         $errors = [];
+        $departmentsById = [];
+        $departmentsByName = [];
+        foreach ((new \App\Models\DepartmentModel())->findAll() as $department) {
+            $departmentsById[(string) $department['id']] = $department;
+            $departmentsByName[strtolower(trim((string) $department['department_name']))] = $department;
+        }
+        $coursesById = [];
+        $coursesByDepartmentAndName = [];
+        $coursesByName = [];
+        foreach ((new \App\Models\CourseModel())->findAll() as $course) {
+            $coursesById[(string) $course['id']] = $course;
+            $courseName = strtolower(trim((string) $course['course_name']));
+            $coursesByDepartmentAndName[(string) $course['department_id'] . '|' . $courseName] = $course;
+            $coursesByName[$courseName] ??= $course;
+        }
 
         foreach ($rows as $index => $row) {
             $record = [];
             foreach ($row as $header => $value) {
                 $key = strtolower(trim((string) $header));
-                $key = preg_replace('/[^a-z0-9 ]/', '', $key);
+                $key = trim((string) preg_replace('/[^a-z0-9]+/', ' ', $key));
                 $field = $fieldMap[$key] ?? null;
                 if ($field) {
                     $record[$field] = trim((string) $value);
                 }
             }
 
+            if (isset($record['student_id']) && preg_match('/^\d+\.0+$/', $record['student_id'])) {
+                $record['student_id'] = strstr($record['student_id'], '.', true);
+            }
+            if (isset($record['student_id'])) {
+                $record['student_id'] = preg_replace('/\D+/', '', $record['student_id']);
+            }
+
             if (empty($record['student_id'])) {
                 $errors[] = 'Row ' . ($index + 2) . ': Missing student_id.';
                 continue;
+            }
+
+            $department = !empty($record['department_id'])
+                ? ($departmentsById[(string) $record['department_id']] ?? null)
+                : null;
+            if (!$department && !empty($record['department'])) {
+                $department = $departmentsByName[strtolower(trim($record['department']))] ?? null;
+            }
+            if ($department) {
+                $record['department_id'] = $department['id'];
+                $record['department'] = $department['department_name'];
+            }
+
+            $course = !empty($record['course_id'])
+                ? ($coursesById[(string) $record['course_id']] ?? null)
+                : null;
+            if (!$course && !empty($record['course'])) {
+                $courseName = strtolower(trim($record['course']));
+                $departmentId = $department['id'] ?? ($record['department_id'] ?? '');
+                $course = $coursesByDepartmentAndName[(string) $departmentId . '|' . $courseName]
+                    ?? ($coursesByName[$courseName] ?? null);
+            }
+            if ($course) {
+                $record['course_id'] = $course['id'];
+                $record['course'] = $course['course_name'];
+                if (!$department && !empty($course['department_id'])) {
+                    $record['department_id'] = $course['department_id'];
+                    $department = $departmentsById[(string) $course['department_id']] ?? null;
+                    if ($department) {
+                        $record['department'] = $department['department_name'];
+                    }
+                }
             }
 
             if (empty($record['full_name'])) {
@@ -544,15 +622,29 @@ class Student extends BaseController
             }
             $record['is_active'] = stripos((string) $record['status'], 'inactive') !== false ? 0 : 1;
             $record['username'] = $record['student_id'];
-            if (empty($record['password'])) {
-                $record['password'] = $this->generatePassword();
-            }
 
             $existing = $this->studentModel->where('student_id', $record['student_id'])->first();
             if ($existing) {
-                $this->studentModel->update($existing['id'], $record);
-                $updated++;
+                $rules = $this->studentModel->getValidationRules();
+                $originalRules = $rules;
+                $rules['student_id'] = "required|is_natural_no_zero|is_unique[students.student_id,id,{$existing['id']}]";
+                $rules['username'] = "permit_empty|is_unique[students.username,id,{$existing['id']}]";
+                $this->studentModel->setValidationRules($rules);
+                try {
+                    if ($this->studentModel->update($existing['id'], $record)) {
+                        $updated++;
+                    } else {
+                        $validationErrors = $this->studentModel->errors();
+                        $errors[] = 'Row ' . ($index + 2) . ': '
+                            . ($validationErrors ? implode(' ', $validationErrors) : 'Unable to update student.');
+                    }
+                } finally {
+                    $this->studentModel->setValidationRules($originalRules);
+                }
             } else {
+                if (empty($record['password'])) {
+                    $record['password'] = $this->generatePassword();
+                }
                 try {
                     if ($this->insertStudentWithAllocatedId($record) !== false) {
                         $imported++;
@@ -568,7 +660,21 @@ class Student extends BaseController
             }
         }
 
-        return $this->response->setJSON(['success' => true, 'imported' => $imported, 'updated' => $updated, 'errors' => $errors]);
+        $processed = $imported + $updated;
+        $message = null;
+        if ($processed === 0) {
+            $message = $errors
+                ? 'No students were imported. ' . implode(' ', array_slice($errors, 0, 5))
+                : 'No student rows were found in the uploaded file.';
+        }
+
+        return $this->response->setJSON([
+            'success' => $processed > 0,
+            'message' => $message,
+            'imported' => $imported,
+            'updated' => $updated,
+            'errors' => $errors,
+        ]);
     }
 
     protected function generatePassword($length = 10)

@@ -456,9 +456,12 @@ class Student extends BaseController
         }
 
         $compactKey = str_replace(' ', '', $key);
+        $hasStudentIdentifier = preg_match('/(student|school|learner|pupil|lrn)/', $compactKey) === 1;
+        $hasIdentifierMarker = preg_match('/(id|number|num|no|code|reference|registration|roll)/', $compactKey) === 1
+            || str_contains($header, '#');
         if (
-            (str_contains($compactKey, 'student') && preg_match('/(id|number|num|no|code)/', $compactKey))
-            || in_array($compactKey, ['idnumber', 'idnum', 'idno', 'schoolid', 'lrn'], true)
+            ($hasStudentIdentifier && $hasIdentifierMarker)
+            || in_array($compactKey, ['idnumber', 'idnum', 'idno'], true)
         ) {
             return 'student_id';
         }
@@ -540,6 +543,12 @@ class Student extends BaseController
             'id no' => 'student_id',
             'id num' => 'student_id',
             'school id' => 'student_id',
+            'school id number' => 'student_id',
+            'school id no' => 'student_id',
+            'learner reference number' => 'student_id',
+            'learner reference no' => 'student_id',
+            'lrn number' => 'student_id',
+            'lrn no' => 'student_id',
             'lrn' => 'student_id',
             'id' => 'student_id',
             'first name' => 'first_name',
@@ -568,6 +577,26 @@ class Student extends BaseController
             'section' => 'section',
             'status' => 'status',
         ];
+
+        if ($rows !== []) {
+            $hasStudentIdColumn = false;
+            foreach (array_keys($rows[0]) as $header) {
+                if ($this->importFieldForHeader((string) $header, $fieldMap) === 'student_id') {
+                    $hasStudentIdColumn = true;
+                    break;
+                }
+            }
+            if (!$hasStudentIdColumn) {
+                $message = 'No student ID column was recognized. Use a header such as Student ID, Student Number, LRN, or ID Number.';
+                return $this->response->setJSON([
+                    'success' => false,
+                    'message' => $message,
+                    'imported' => 0,
+                    'updated' => 0,
+                    'errors' => [$message],
+                ]);
+            }
+        }
 
         $imported = 0;
         $updated = 0;

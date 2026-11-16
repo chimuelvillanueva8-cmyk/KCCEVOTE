@@ -35,6 +35,10 @@ final class StudentImportParsingTest extends TestCase
         self::assertSame('student_id', $controller->mapImportHeader('Student_ID', $fieldMap));
         self::assertSame('student_id', $controller->mapImportHeader('Student ID No.', $fieldMap));
         self::assertSame('student_id', $controller->mapImportHeader('ID Number', $fieldMap));
+        self::assertSame('student_id', $controller->mapImportHeader('LRN No.', $fieldMap));
+        self::assertSame('student_id', $controller->mapImportHeader('Learner Reference Number', $fieldMap));
+        self::assertSame('student_id', $controller->mapImportHeader('School ID No.', $fieldMap));
+        self::assertSame('student_id', $controller->mapImportHeader('Student #', $fieldMap));
         self::assertSame('course', $controller->mapImportHeader('Course Name', $fieldMap));
     }
 

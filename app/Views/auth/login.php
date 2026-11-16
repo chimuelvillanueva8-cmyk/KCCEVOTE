@@ -1746,7 +1746,7 @@
                                 latitudeInput.value = position.coords.latitude;
                                 longitudeInput.value = position.coords.longitude;
                                 geolocationComplete = true;
-                                updateLocationMessage('✓ Campus location detected.', false, true);
+                                updateLocationMessage('Your Location Is Being Tracked', false, true);
                                 console.log('✓ Location acquired: ' + position.coords.latitude + ', ' + position.coords.longitude);
                                 if (pendingLoginSubmit) {
                                     pendingLoginSubmit = false;

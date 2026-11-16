@@ -83,7 +83,9 @@ class Departments extends BaseController
             'department_name' => $departmentName,
             'status' => $data['status'] ?? 'Active',
         ], false)) {
-            log_message('error', 'Failed to add department. Database error: ' . json_encode($this->model->db->error()));
+            $errorMessage = 'Failed to add department. Database error: ' . json_encode($this->model->db->error());
+            log_message('error', $errorMessage);
+            error_log($errorMessage);
             return $this->response->setStatusCode(500)->setJSON([
                 'success' => false,
                 'message' => 'Unable to add the department. Please try again or check the application logs.',

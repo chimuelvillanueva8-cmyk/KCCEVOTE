@@ -82,7 +82,9 @@ class Courses extends BaseController
             'course_name' => $courseName,
             'status' => $data['status'] ?? 'Active',
         ], false)) {
-            log_message('error', 'Failed to add course. Database error: ' . json_encode($this->model->db->error()));
+            $errorMessage = 'Failed to add course. Database error: ' . json_encode($this->model->db->error());
+            log_message('error', $errorMessage);
+            error_log($errorMessage);
             return $this->response->setStatusCode(500)->setJSON([
                 'success' => false,
                 'message' => 'Unable to add the course. Please try again or check the application logs.',

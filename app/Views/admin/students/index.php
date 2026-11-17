@@ -1615,7 +1615,7 @@
                     </div>
                     <div class="filter-field">
                         <label for="filterCourse">Course</label>
-                        <select id="filterCourse" disabled><option value="">Select Department First</option></select>
+                        <select id="filterCourse"><option value="">All Courses</option></select>
                     </div>
                     <div class="filter-field">
                         <label for="filterYear">Year Level</label>
@@ -1937,25 +1937,33 @@ async function loadCoursesFor(departmentId, targetSelectId, includePlaceholder=t
     const sel = document.getElementById(targetSelectId);
     if (!sel) return;
     const isFilter = targetSelectId === 'filterCourse';
-    if (!departmentId) {
+    if (!departmentId && !isFilter) {
         sel.replaceChildren(new Option('Select Department First', ''));
-        sel.disabled = isFilter;
+        sel.disabled = true;
         return;
     }
+
+    const requestId = Number(sel.dataset.courseRequestId || 0) + 1;
+    sel.dataset.courseRequestId = String(requestId);
     sel.disabled = false;
     sel.replaceChildren(new Option('Loading courses...', ''));
     try {
-        const res = await fetch(`<?= base_url('courses/by-department') ?>/${departmentId}`);
+        const coursesUrl = departmentId
+            ? `<?= base_url('courses/by-department') ?>/${encodeURIComponent(departmentId)}`
+            : '<?= base_url('admin/courses/all') ?>';
+        const res = await fetch(coursesUrl);
         if (!res.ok) throw new Error(`Course request failed (${res.status})`);
         const courses = await res.json();
+        if (Number(sel.dataset.courseRequestId) !== requestId) return;
         if (!Array.isArray(courses) || courses.length === 0) {
-            sel.replaceChildren(new Option('No active courses', ''));
+            sel.replaceChildren(new Option('No courses available', ''));
             return;
         }
         sel.replaceChildren();
         sel.add(new Option(isFilter ? 'All Courses' : (includePlaceholder ? 'Select Course' : 'All Courses'), ''));
         courses.forEach(course => sel.add(new Option(course.course_name, course.id)));
     } catch (err) {
+        if (Number(sel.dataset.courseRequestId) !== requestId) return;
         console.error('Failed to load courses', err);
         sel.replaceChildren(new Option('Failed to load courses', ''));
     }
@@ -1968,6 +1976,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const regCourse = document.getElementById('course_id');
     const filterDept = document.getElementById('filterDepartment');
     const filterCourse = document.getElementById('filterCourse');
+
+    loadCoursesFor('', 'filterCourse', false);
 
     if (regDept) {
         regDept.addEventListener('change', function() {

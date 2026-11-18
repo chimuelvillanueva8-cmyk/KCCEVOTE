@@ -22,5 +22,10 @@ final class DepartmentCourseAutoIncrementMigrationTest extends CIUnitTestCase
             $versions,
             'Discovered versions: ' . implode(', ', $versions)
         );
+        self::assertContains(
+            '2026-11-18-125500',
+            $versions,
+            'Discovered versions: ' . implode(', ', $versions)
+        );
     }
 }

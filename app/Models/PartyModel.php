@@ -8,12 +8,14 @@ class PartyModel extends Model
 {
     protected $table      = 'parties';
     protected $primaryKey = 'id';
+    protected $useAutoIncrement = false;
 
     protected $useTimestamps = true;
     protected $createdField  = 'created_at';
     protected $updatedField  = 'updated_at';
 
     protected $allowedFields = [
+        'id',
         'name',
         'election_id',
         'acronym',
@@ -21,6 +23,25 @@ class PartyModel extends Model
         'logo',
         'status',
     ];
+
+    public function insertWithNextId(array $data): bool
+    {
+        if (! $this->db->tableExists($this->table)) {
+            return false;
+        }
+
+        if (! array_key_exists('id', $data) || $data['id'] === null || $data['id'] === '') {
+            $maxId = (int) $this->db->table($this->table)
+                ->selectMax('id', 'max_id')
+                ->get()
+                ->getRow()
+                ->max_id;
+
+            $data['id'] = $maxId + 1;
+        }
+
+        return $this->insert($data, false);
+    }
 
     protected $validationRules = [
         'name'        => 'required',

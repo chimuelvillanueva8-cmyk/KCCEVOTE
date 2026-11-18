@@ -170,7 +170,7 @@ class Admin extends \App\Controllers\BaseController
             $data['photo'] = $photoUpload['photo'];
         }
 
-        if (! $model->save($data)) {
+        if (! $model->insertWithNextId($data)) {
             if ($this->request->isAJAX()) {
                 $errors = $model->errors();
                 return $this->csrfJson([
@@ -888,9 +888,19 @@ class Admin extends \App\Controllers\BaseController
             $data['status'] = 'active';
         }
 
-        if (! $model->save($data)) {
+        if (! $model->insertWithNextId($data)) {
             if ($this->request->isAJAX()) {
-                return $this->csrfJson(['success' => false, 'message' => 'Unable to create position.', 'errors' => $model->errors()]);
+                $errors = $model->errors();
+                $message = $errors
+                    ? implode(' ', array_values($errors))
+                    : 'Unable to create position.';
+
+                $this->response->setStatusCode(422);
+                return $this->csrfJson([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => $errors,
+                ]);
             }
             return redirect()->back()->withInput()->with('errors', $model->errors());
         }
@@ -1013,7 +1023,7 @@ class Admin extends \App\Controllers\BaseController
             $data['logo'] = $newName;
         }
 
-        if (! $model->save($data)) {
+        if (! $model->insertWithNextId($data)) {
             if ($this->request->isAJAX()) {
                 $errors = $model->errors();
                 $message = $errors

@@ -38,10 +38,12 @@ class ElectionModelTest extends CIUnitTestCase
             'title' => 'Election One',
             'status' => 'pending',
         ]));
+        $this->assertSame(1, $model->getInsertID());
         $this->assertTrue($model->insertWithNextId([
             'title' => 'Election Two',
             'status' => 'pending',
         ]));
+        $this->assertSame(2, $model->getInsertID());
 
         $ids = db_connect('tests')->table('db_elections')->orderBy('id')->get()->getResultArray();
         $this->assertSame([1, 2], array_map('intval', array_column($ids, 'id')));

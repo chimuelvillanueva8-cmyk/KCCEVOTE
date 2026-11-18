@@ -8,6 +8,7 @@ class ElectionModel extends Model
 {
     protected $table      = 'elections';
     protected $primaryKey = 'id';
+    protected $useAutoIncrement = false;
 
     protected $allowedFields = ['id', 'title', 'description', 'academic_year', 'status', 'manual_open', 'start_time', 'end_time', 'access_type', 'allowed_departments', 'allowed_students'];
 

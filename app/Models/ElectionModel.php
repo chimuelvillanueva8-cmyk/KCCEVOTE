@@ -9,7 +9,7 @@ class ElectionModel extends Model
     protected $table      = 'elections';
     protected $primaryKey = 'id';
 
-    protected $allowedFields = ['title', 'description', 'academic_year', 'status', 'manual_open', 'start_time', 'end_time', 'access_type', 'allowed_departments', 'allowed_students'];
+    protected $allowedFields = ['id', 'title', 'description', 'academic_year', 'status', 'manual_open', 'start_time', 'end_time', 'access_type', 'allowed_departments', 'allowed_students'];
 
     protected $validationRules = [
         'title' => 'required|min_length[3]',
@@ -28,6 +28,25 @@ class ElectionModel extends Model
         'start_time' => ['valid_date' => 'Start time must be a valid datetime.'],
         'end_time' => ['valid_date' => 'End time must be a valid datetime.'],
     ];
+
+    public function insertWithNextId(array $data): bool
+    {
+        if (! $this->db->tableExists($this->table)) {
+            return false;
+        }
+
+        if (! array_key_exists('id', $data) || $data['id'] === null || $data['id'] === '') {
+            $maxId = (int) $this->db->table($this->table)
+                ->selectMax('id', 'max_id')
+                ->get()
+                ->getRow()
+                ->max_id;
+
+            $data['id'] = $maxId + 1;
+        }
+
+        return $this->insert($data, false);
+    }
 
     public function hasDuplicateTitleForAcademicYear(string $title, ?string $academicYear, ?int $excludeId = null): bool
     {

@@ -555,7 +555,7 @@ class Admin extends \App\Controllers\BaseController
             $data['allowed_students'] = null;
         }
 
-        if (! $model->save($data)) {
+        if (! $model->insertWithNextId($data)) {
             if ($this->request->isAJAX()) {
                 $errors = $model->errors();
                 return $this->csrfJson([

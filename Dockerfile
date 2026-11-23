@@ -32,8 +32,8 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 # Enable Apache rewrite module
 RUN a2enmod rewrite
 
-# Configure PHP error logging to stderr for Render logs
-RUN echo "log_errors = On\nerror_log = /dev/stderr" > /usr/local/etc/php/conf.d/logging.ini
+# Configure PHP error logging to stderr and enable $_ENV variables
+RUN echo "log_errors = On\nerror_log = /dev/stderr\nvariables_order = \"EGPCS\"" > /usr/local/etc/php/conf.d/logging.ini
 
 # Configure Apache DocumentRoot to CodeIgniter's /public folder
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
@@ -74,5 +74,6 @@ RUN mkdir -p /var/www/html/writable/cache \
 # Expose default HTTP port
 EXPOSE 80 10000
 
-# Refresh CodeIgniter's file cache, apply migrations, then serve requests.
-CMD ["sh", "-c", "php spark cache:clear && php spark migrate && exec apache2-foreground"]
+# Export container environment variables to .env so Apache/CodeIgniter can read them,
+# refresh cache, run migrations, and start Apache.
+CMD ["sh", "-c", "php -r 'foreach (getenv() as $k => $v) { if (is_string($k) && (is_string($v) || is_numeric($v))) { file_put_contents(\"/var/www/html/.env\", \"$k=\\\"$v\\\"\\n\", FILE_APPEND); } }' && chown www-data:www-data /var/www/html/.env 2>/dev/null || true && php spark cache:clear && php spark migrate --all && exec apache2-foreground"]

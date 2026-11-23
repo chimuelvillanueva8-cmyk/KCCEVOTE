@@ -194,16 +194,31 @@ class Database extends Config
     {
         parent::__construct();
 
-        $isRender = ! empty(getenv('RENDER')) || ! empty(getenv('PORT'));
+        $isRender = ! empty(getenv('RENDER'))
+            || ! empty(getenv('PORT'))
+            || ! empty($_SERVER['RENDER'])
+            || ! empty($_SERVER['PORT'])
+            || ! empty($_ENV['RENDER'])
+            || ! empty($_ENV['PORT'])
+            || (isset($_SERVER['HTTP_HOST']) && str_ends_with($_SERVER['HTTP_HOST'], '.onrender.com'))
+            || (isset($_SERVER['SERVER_NAME']) && str_ends_with($_SERVER['SERVER_NAME'], '.onrender.com'));
 
         $this->default['hostname'] = (string) (
             env('database.default.hostname')
             ?: env('DB_HOST')
+            ?: getenv('database.default.hostname')
+            ?: getenv('DB_HOST')
+            ?: ($_SERVER['database.default.hostname'] ?? '')
+            ?: ($_SERVER['DB_HOST'] ?? '')
             ?: ($isRender ? 'gateway01.ap-northeast-1.prod.aws.tidbcloud.com' : '127.0.0.1')
         );
         $this->default['username'] = (string) (
             env('database.default.username')
             ?: env('DB_USER')
+            ?: getenv('database.default.username')
+            ?: getenv('DB_USER')
+            ?: ($_SERVER['database.default.username'] ?? '')
+            ?: ($_SERVER['DB_USER'] ?? '')
             ?: ($isRender ? '3R5wCk7p8Mvk2Ug.root' : 'root')
         );
         
@@ -217,6 +232,10 @@ class Database extends Config
             ?: getenv('DB_PASSWORD')
             ?: ($_SERVER['database.default.password'] ?? '')
             ?: ($_SERVER['TIDB_PASSWORD'] ?? '')
+            ?: ($_SERVER['DB_PASSWORD'] ?? '')
+            ?: ($_ENV['database.default.password'] ?? '')
+            ?: ($_ENV['TIDB_PASSWORD'] ?? '')
+            ?: ($_ENV['DB_PASSWORD'] ?? '')
             ?: ''
         );
         if ($dbPassword === '') {
@@ -233,12 +252,23 @@ class Database extends Config
         $this->default['database'] = (string) (
             env('database.default.database')
             ?: env('DB_NAME')
+            ?: getenv('database.default.database')
+            ?: getenv('DB_NAME')
+            ?: ($_SERVER['database.default.database'] ?? '')
+            ?: ($_SERVER['DB_NAME'] ?? '')
             ?: 'voting_system'
         );
         $this->default['DBDriver'] = (string) env('database.default.DBDriver', 'MySQLi');
         $this->default['DBPrefix'] = (string) env('database.default.DBPrefix', '');
 
-        $port = (int) (env('database.default.port') ?: env('DB_PORT') ?: 0);
+        $port = (int) (
+            env('database.default.port')
+            ?: env('DB_PORT')
+            ?: getenv('database.default.port')
+            ?: getenv('DB_PORT')
+            ?: ($_SERVER['database.default.port'] ?? 0)
+            ?: 0
+        );
         if ($port > 0) {
             $this->default['port'] = $port;
         } elseif (str_contains($this->default['hostname'] ?? '', 'tidbcloud.com')) {

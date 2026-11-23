@@ -87,3 +87,12 @@ Render runs the full application inside a real Apache + PHP 8.2 container using 
    | `database.default.DBDriver` | `MySQLi` |
 8. Click **Create Web Service**. Render will build and deploy the container.
 
+### Restoring data from a backup
+
+The app's database is hosted by TiDB; deploying the Render service does not import a local SQL backup automatically. To create a data-only restore file from the included backup:
+
+1. Make a fresh export of the TiDB database first.
+2. From the project root, run `php generate_restore_sql.php`.
+3. Review `db/restore_data.sql`, then run it against the same TiDB database configured for Render using TiDB Cloud's SQL editor or a MySQL-compatible client.
+
+The generated script skips session and migration history tables, and leaves rows unchanged when a primary or unique key already exists. It can restore missing rows from the backup, but it does not overwrite existing rows or restore uploaded files. Verify the restored records in the application before relying on them.

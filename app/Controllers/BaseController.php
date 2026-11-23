@@ -4,7 +4,6 @@ namespace App\Controllers;
 
 use CodeIgniter\Controller;
 use App\Libraries\CampusLocation;
-use App\Models\ElectionModel;
 use App\Models\SettingModel;
 use CodeIgniter\HTTP\RequestInterface;
 use CodeIgniter\HTTP\ResponseInterface;
@@ -41,8 +40,6 @@ abstract class BaseController extends Controller
 
         // Caution: Do not edit this line.
         parent::initController($request, $response, $logger);
-
-        (new ElectionModel())->syncScheduledStatuses();
 
         // Preload any models, libraries, etc, here.
         // $this->session = service('session');
